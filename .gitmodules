@@ -1,0 +1,3 @@
+[submodule "slicer/src/tree-sitter/tree-sitter-c"]
+	path = slicer/src/tree-sitter/tree-sitter-c
+	url = https://github.com/tree-sitter/tree-sitter-c

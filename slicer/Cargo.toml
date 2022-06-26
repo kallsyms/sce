@@ -1,0 +1,10 @@
+[package]
+name = "slicer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tree-sitter = "0.20.7"
+tree-sitter-c = "0.20.1"
+regex = "1.5.4"
+lazy_static = "1.4.0"
