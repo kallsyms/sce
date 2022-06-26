@@ -3,21 +3,38 @@ use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use tree_sitter;
 use tree_sitter_c;
+
 mod guess_language;
 
+/// SlicerConfig is the main configuration for the slicer.
+/// This includes all language-specific tree-sitter type names which various stages of the slicing
+/// need.
 struct SlicerConfig {
+    /// The tree_sitter language the slicer should use to parse with
     language: tree_sitter::Language,
-    // Type names representing "atomic" name fragments (e.g. `self`, `foo`, `bar`)
+
+    /// Type names representing "atomic" name fragments (e.g. `self`, `foo`, `bar`)
     identifier_types: Vec<&'static str>,
-    // Type names representing any possible "complete" name (e.g. `self.foo.bar`)
+
+    /// Type names representing any possible "complete" name (e.g. `self.foo.bar`)
     name_types: Vec<&'static str>,
-    // Type names and the type names for the descendant target and source
-    // representing ways a variable can flow into a new variable (e.g. `assignment`)
+
+    /// Type names and the type names for the descendant target and source representing ways a
+    /// variable can flow into a new variable (e.g. assignment).
+    /// e.g. ("assignment_expression", ("left", "right"))
     propagating_types: Vec<(&'static str, (&'static str, &'static str))>,
-    // Type names representing statements. Can use inheritance information from node-types.
+
+    /// Type names representing statements. Can use inheritance information from node-types.
     statement_types: Vec<&'static str>,
-    // Type names representing scopes in which we can slice (usually just functions)
-    scope_types: Vec<&'static str>,
+
+    /// Type names representing scopes in which we can slice (just functions?)
+    slice_scope_types: Vec<&'static str>,
+
+    /// Type names representing variable accessibility "boundaries" in the language, where
+    /// variables defined within are not accessible outside of.
+    /// For Python, this would be function level, but for C-like languages, this would be
+    /// block-level.
+    var_definition_scope_types: Vec<&'static str>,
 }
 
 fn from_guessed_language(language: guess_language::Language) -> Option<SlicerConfig> {
@@ -33,13 +50,18 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
                     ("assignment_expression", ("left", "right")),
                 ],
                 statement_types: vec!["_statement"],
-                scope_types: vec!["function_definition"],
+                slice_scope_types: vec!["function_definition"],
+                var_definition_scope_types: vec!["compound_statement"], // TODO: is there a block
+                                                                        // type in node-types?
             })
         }
         _ => None
     }
 }
 
+/// Represents a symbol name, represented as the list of components which make up the symbol
+/// e.g. ["self", "foo", "bar"] in the case of `self.foo.bar` in Python.
+/// This lets us easily check if a variable affects/is affected by another (in name).
 #[derive(Clone, Debug)]
 struct NameRef<'a> {
     node: tree_sitter::Node<'a>,
@@ -67,6 +89,9 @@ impl<'a> NameRef<'a> {
     }
 }
 
+/// DepthFirstWalk is a small helper to do simple iterations over a tree-sitter node/tree,
+/// implementing Iterator for simple for-in uses, as well as a callback-based traversal function,
+/// useful if you want to/need to not traverse deeper when a specific condition is met.
 struct DepthFirstWalk<'a> {
     root: tree_sitter::Node<'a>,
     cursor: tree_sitter::TreeCursor<'a>,
@@ -114,10 +139,10 @@ impl<'a> Iterator for DepthFirstWalk<'a> {
 }
 
 impl<'a> DepthFirstWalk<'a> {
-    // Call the given cb for each node, skipping any descendants of a given node
-    // if the cb returns false.
+    /// Call the given cb for each node, skipping any descendants of a given node if the cb returns
+    /// false.
     fn traverse<F>(&mut self, mut cb: F) where F: FnMut(tree_sitter::Node<'a>) -> bool {
-        loop {
+        'outer: loop {
             if cb(self.cursor.node()) {
                 if self.cursor.goto_first_child() {
                     continue;
@@ -136,7 +161,7 @@ impl<'a> DepthFirstWalk<'a> {
                 }
 
                 if self.cursor.goto_next_sibling() {
-                    continue;
+                    continue 'outer;
                 }
             }
         }
@@ -145,17 +170,21 @@ impl<'a> DepthFirstWalk<'a> {
 
 struct Slicer {
     config: SlicerConfig,
+    src: String,
 }
 
 impl Slicer {
-    fn name_components<'a>(&self, src: &'a str, node: tree_sitter::Node) -> Vec<String> {
+    /// Return a Vec of all "name components", e.g. ["self", "foo", "bar"]
+    fn name_components<'a>(&self, node: tree_sitter::Node) -> Vec<String> {
         depth_first(node)
             .filter(|&descendant| self.config.identifier_types.contains(&descendant.kind()))
-            .map(|descendant| String::from(&src[descendant.start_byte()..descendant.end_byte()]))
+            .map(|descendant| String::from(&self.src[descendant.start_byte()..descendant.end_byte()]))
             .into_iter().collect()
     }
 
-    fn name_at_point<'a>(&self, src: &'a str, root: &'a tree_sitter::Node, point: tree_sitter::Point) -> Option<NameRef<'a>> {
+    /// Find the name reference at the specified point, if an identifier is referenced at that
+    /// point.
+    fn name_at_point<'a>(&self, root: &'a tree_sitter::Node, point: tree_sitter::Point) -> Option<NameRef<'a>> {
         let mut cur = root.walk();
 
         loop {
@@ -163,7 +192,7 @@ impl Slicer {
 
             if self.config.name_types.contains(&node.kind()) {
                 // Walk down and gather all specific identifiers
-                return Some(NameRef{node, components: self.name_components(src, node)});
+                return Some(NameRef{node, components: self.name_components(node)});
             }
 
             if cur.goto_first_child_for_point(point) == None {
@@ -172,16 +201,19 @@ impl Slicer {
         }
     }
 
-    fn referenced_names<'a>(&self, src: &'a str, node: tree_sitter::Node<'a>) -> Vec<NameRef<'a>> {
+    fn referenced_names<'a>(&self, node: tree_sitter::Node<'a>) -> Vec<NameRef<'a>> {
         let mut names = vec![];
         depth_first(node).traverse(|descendant| {
             if self.config.name_types.contains(&descendant.kind()) {
-                names.push(NameRef{node: descendant.clone(), components: self.name_components(src, descendant)});
+                names.push(NameRef{node: descendant.clone(), components: self.name_components(descendant)});
                 return false;
             }
             return true;
         });
         names
+    }
+
+    fn propagate_targets<'a>(&self, outer_scope: tree_sitter::Node, target_names: HashSet<NameRef>) {
     }
 
     pub fn slice(&mut self, source_code: &str, target_point: tree_sitter::Point) -> String {
@@ -190,9 +222,8 @@ impl Slicer {
 
         let tree = parser.parse(source_code, None).unwrap();
         let root_node = tree.root_node();
-        println!("{}", root_node.to_sexp());
 
-        let target = self.name_at_point(source_code, &root_node, target_point).unwrap();
+        let target = self.name_at_point(&root_node, target_point).unwrap();
 
         let mut target_func = target.node;
         // Cursors don't do what you'd expect here?
@@ -201,7 +232,7 @@ impl Slicer {
         // i'm guessing cursors arent supposed to be able to walk "out" of their initial
         // node, but nothing in tree-sitter source seems to say that...
         loop {
-            if self.config.scope_types.contains(&target_func.kind()) {
+            if self.config.slice_scope_types.contains(&target_func.kind()) {
                 break;
             }
             target_func = target_func.parent().unwrap();
@@ -210,7 +241,11 @@ impl Slicer {
         let mut target_names: HashSet<NameRef> = HashSet::new();
         target_names.insert(target.clone());
 
-        return format!("{:?}", target);
+        println!("{:?}", self.referenced_names(target_func));
+
+        let deleted_nodes = self.propagate_targets(target_func, target_names);
+
+        return format!("{:?}", deleted_nodes);
     }
 }
 
@@ -226,6 +261,7 @@ int main() {
     let slicer_config = from_guessed_language(lang).unwrap();
     let mut slicer = Slicer{
         config: slicer_config,
+        src: String::from(source_code),
     };
     let reduced = slicer.slice(source_code, tree_sitter::Point::new(3, 6));
 
