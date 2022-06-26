@@ -342,9 +342,83 @@ impl Slicer {
         delete_nodes
     }
 
-    fn coalesce_nodes<'a>(&self, nodes: &Vec<tree_sitter::Node<'a>>) -> Vec<tree_sitter::Range> {
-        let ranges = vec![];
+    /// Coalesce adjacent deleted spans only if they are adjacent in the AST
+    fn coalesce_ranges<'a>(&self, nodes: &Vec<tree_sitter::Node<'a>>) -> Vec<tree_sitter::Range> {
+        let mut ranges = vec![];
+
+        let mut i = 0;
+        while i < nodes.len() {
+            let start = (nodes[i].start_byte(), nodes[i].start_position());
+
+            let mut end_node = nodes[i];
+
+            while i + 1 < nodes.len() {
+                let mut next = end_node.next_sibling();
+
+                // traverse to the nearest sibling of an ancestor if we don't have a sibling
+                // ourselves
+                let mut cur = end_node;
+                while next.is_none() {
+                    match cur.parent() {
+                        Some(parent) => {
+                            cur = parent;
+                            next = parent.next_sibling();
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                match next {
+                    // we have a next node to check for range coalescing
+                    Some(next) => {
+                        // if it's the next in the vector of nodes, set the new end node to this
+                        if next == nodes[i + 1] {
+                            end_node = next;
+                            i += 1;
+                        } else {
+                            // otherwise we can't do anything else, so break out
+                            break;
+                        }
+                    },
+                    None => {
+                        // no next node, nothing to coalesce
+                        break;
+                    }
+                }
+            }
+
+            let end = (end_node.end_byte(), end_node.end_position());
+
+            ranges.push(tree_sitter::Range{
+                start_byte: start.0,
+                start_point: start.1,
+                end_byte: end.0,
+                end_point: end.1,
+            });
+
+            i += 1;
+        }
+
         ranges
+    }
+
+    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
+        if ranges.len() == 0 {
+            return self.src.clone();
+        }
+
+        let src_lines: Vec<&str> = self.src.split("\n").collect();
+        let mut new: Vec<&str> = vec![];
+
+        new.extend(src_lines[0..ranges[0].start_point.row].iter());
+        for (a, b) in ranges.iter().zip(ranges[1..].iter()) {
+            new.extend(src_lines[a.end_point.row + 1..b.start_point.row].iter());
+        }
+        new.extend(src_lines[ranges[ranges.len() - 1].end_point.row + 1..].iter());
+
+        new.join("\n")
     }
 
     pub fn slice(&mut self, source_code: &str, target_point: tree_sitter::Point) -> String {
@@ -357,6 +431,7 @@ impl Slicer {
         let target_name = self.name_at_point(&root_node, target_point).unwrap();
 
         // walk up to the containing function
+        // TODO: maybe make this just "outermost block"?
         let mut target_func = target_name.node;
         // Cursors don't do what you'd expect here?
         // cur = target.walk();
@@ -375,9 +450,12 @@ impl Slicer {
 
         target_names = self.propagate_targets(target_func, &target_names);
         let delete_nodes = self.flatten_unreferenced(target_func, &target_names);
-        let delete_ranges = self.coalesce_nodes(&delete_nodes);
+        let delete_ranges = self.coalesce_ranges(&delete_nodes);
 
-        return format!("{:?}", delete_ranges);
+        println!("delete_ranges: {:?}", delete_ranges);
+
+        let sliced_source = self.delete_ranges(&delete_ranges);
+        sliced_source
     }
 }
 
@@ -387,8 +465,10 @@ int main() {
     int x = 0;
     int y = 0;
     s.z = x;
-    foo = s;
-    foo.y = bar;
+    if a {
+        foo = s;
+        foo.y = bar;
+    }
     return x;
 }";
 
