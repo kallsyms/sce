@@ -1,7 +1,8 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::path::Path;
+use serde::Deserialize;
 use tree_sitter;
 use tree_sitter_c;
 
@@ -13,6 +14,9 @@ mod guess_language;
 struct SlicerConfig {
     /// The tree_sitter language the slicer should use to parse with
     language: tree_sitter::Language,
+
+    /// Subtype information from NODE_TYPES
+    subtypes: HashMap<String, Vec<String>>,
 
     /// Type names representing "atomic" name fragments (e.g. `self`, `foo`, `bar`)
     identifier_types: Vec<&'static str>,
@@ -38,6 +42,25 @@ struct SlicerConfig {
     var_definition_scope_types: Vec<&'static str>,
 }
 
+#[derive(Deserialize)]
+struct NodeType {
+    r#type: String,
+    #[serde(default)]
+    subtypes: Vec<NodeType>,
+}
+
+fn expand_node_types(node_types_json: &str) -> HashMap<String, Vec<String>> {
+    let mut subtypes = HashMap::new();
+
+    for node_type in serde_json::from_str::<Vec<NodeType>>(node_types_json).unwrap() {
+        let mut node_subtypes = vec![node_type.r#type.clone()];
+        node_subtypes.extend(node_type.subtypes.iter().map(|t| t.r#type.clone()));
+        subtypes.insert(node_type.r#type, node_subtypes);
+    }
+
+    subtypes
+}
+
 fn from_guessed_language(language: guess_language::Language) -> Option<SlicerConfig> {
     use guess_language::Language::*;
 
@@ -45,13 +68,13 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         C => {
             Some(SlicerConfig{
                 language: tree_sitter_c::language(),
+                subtypes: expand_node_types(tree_sitter_c::NODE_TYPES),
                 identifier_types: vec!["identifier", "field_identifier"],
                 name_types: vec!["identifier", "field_expression"],
                 propagating_types: vec![
                     ("assignment_expression", ("left", "right")),
                 ],
-                // TODO: from node-types.json
-                statement_types: vec!["expression_statement", "assignment_expression", "init_declarator"],
+                statement_types: vec!["_statement", "declaration"],
                 slice_scope_types: vec!["function_definition"],
                 var_definition_scope_types: vec!["compound_statement"],
             })
@@ -192,9 +215,13 @@ struct Slicer {
 }
 
 impl Slicer {
+    fn contains_subtype(&self, types: &Vec<&'static str>, node: &tree_sitter::Node) -> bool {
+        types.iter().any(|t| self.config.subtypes[&t.to_string()].contains(&node.kind().to_string()))
+    }
+
     /// Return a Vec of all "name components", e.g. ["self", "foo", "bar"]
-    fn name_components<'a>(&self, node: tree_sitter::Node) -> Vec<String> {
-        depth_first(node)
+    fn name_components(&self, node: &tree_sitter::Node) -> Vec<String> {
+        depth_first(*node)
             .filter(|&descendant| self.config.identifier_types.contains(&descendant.kind()))
             .map(|descendant| String::from(&self.src[descendant.start_byte()..descendant.end_byte()]))
             .into_iter().collect()
@@ -210,7 +237,7 @@ impl Slicer {
 
             if self.config.name_types.contains(&node.kind()) {
                 // Walk down and gather all specific identifiers
-                return Some(NameRef{node, components: self.name_components(node)});
+                return Some(NameRef{node, components: self.name_components(&node)});
             }
 
             if cur.goto_first_child_for_point(point) == None {
@@ -223,7 +250,7 @@ impl Slicer {
         let mut names = vec![];
         depth_first(node).traverse(|descendant| {
             if self.config.name_types.contains(&descendant.kind()) {
-                names.push(NameRef{node: descendant.clone(), components: self.name_components(descendant)});
+                names.push(NameRef{node: descendant.clone(), components: self.name_components(&descendant)});
                 return false;
             }
             return true;
@@ -232,7 +259,7 @@ impl Slicer {
     }
 
     /// Propagate the set of target names out through all assignments
-    fn propagate_targets<'a>(&self, outer_scope: tree_sitter::Node<'a>, initial_target_names: &HashSet<NameRef<'a>>) -> HashSet<NameRef<'a>> {
+    fn propagate_targets<'a>(&self, outer_scope: &'a tree_sitter::Node, initial_target_names: &HashSet<NameRef<'a>>) -> HashSet<NameRef<'a>> {
         let mut target_names = initial_target_names.clone();
 
         // TODO: use depth_first.traverse_with_depth to push and pop scopes based on
@@ -240,7 +267,7 @@ impl Slicer {
         loop {
             let mut changed = false;
 
-            for descendant in depth_first(outer_scope) {
+            for descendant in depth_first(*outer_scope) {
                 if let Some((_, (target_child_name, source_child_name))) = self.config.propagating_types.iter().find(|&&(expr_kind, (_, _))| expr_kind == descendant.kind()) {
                     let target_node = descendant.child_by_field_name(target_child_name);
                     let source_node = descendant.child_by_field_name(source_child_name);
@@ -255,7 +282,7 @@ impl Slicer {
 
                     // If any known targets "affects" a var in the source, all vars in the dest are now targets
                     if target_names.iter().any(|tname| node_source_names.iter().any(|sname| tname.affects(&sname))) {
-                        println!("Propagating node {:?} adds {:?} to targets", descendant, node_target_names);
+                        //println!("Propagating node {:?} adds {:?} to targets", descendant, node_target_names);
                         changed = target_names.intersection(&HashSet::from_iter(node_target_names.iter().cloned())).count() > 0;
                         target_names.extend(node_target_names);
                     }
@@ -284,7 +311,7 @@ impl Slicer {
         depth_first(target_func).traverse_with_depth(
             |descendant| {
                 if self.config.name_types.contains(&descendant.kind()) {
-                    let name = NameRef{node: descendant, components: self.name_components(descendant)};
+                    let name = NameRef{node: descendant, components: self.name_components(&descendant)};
                     if target_names.contains(&name) {
                         references.borrow_mut().insert(descendant);
                     }
@@ -292,7 +319,9 @@ impl Slicer {
                 }
                 return true;
             },
+            // nothing to do on descend
             |_, _|{},
+            // on ascend,
             |_, to| {
                 // "bubble-up" reference data when exiting out of a node
                 let mut cur = to.walk();
@@ -306,7 +335,7 @@ impl Slicer {
         );
 
         depth_first(target_func).traverse(|statement| {
-            if !self.config.statement_types.contains(&statement.kind()) {
+            if !self.contains_subtype(&self.config.statement_types, &statement) {
                 return true;
             }
 
@@ -404,29 +433,56 @@ impl Slicer {
         ranges
     }
 
-    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
-        if ranges.len() == 0 {
-            return self.src.clone();
-        }
+    // fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
+    //     // this assumes that there's only one statement per line, so it's safe to completely remove
+    //     // any lines which have a range to delete within it.
+    //     if ranges.len() == 0 {
+    //         return self.src.clone();
+    //     }
 
+    //     let src_lines: Vec<&str> = self.src.split("\n").collect();
+    //     let mut new: Vec<&str> = vec![];
+
+    //     new.extend(src_lines[0..ranges[0].start_point.row].iter());
+    //     for (a, b) in ranges.iter().zip(ranges[1..].iter()) {
+    //         new.extend(src_lines[a.end_point.row + 1..b.start_point.row].iter());
+    //     }
+    //     new.extend(src_lines[ranges[ranges.len() - 1].end_point.row + 1..].iter());
+
+    //     new.join("\n")
+    // }
+
+    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
         let src_lines: Vec<&str> = self.src.split("\n").collect();
         let mut new: Vec<&str> = vec![];
 
-        new.extend(src_lines[0..ranges[0].start_point.row].iter());
-        for (a, b) in ranges.iter().zip(ranges[1..].iter()) {
-            new.extend(src_lines[a.end_point.row + 1..b.start_point.row].iter());
+        let mut i = 0;
+        for range in ranges {
+            if i < range.start_point.row {
+                new.extend(src_lines[i..range.start_point.row].iter());
+            }
+            let prefix = &src_lines[range.start_point.row][0..range.start_point.column];
+            if !prefix.trim().is_empty() {
+                new.push(prefix);
+            }
+            let suffix = &src_lines[range.end_point.row][range.end_point.column..];
+            if !suffix.trim().is_empty() {
+                new.push(suffix);
+            }
+            i = range.end_point.row + 1;
         }
-        new.extend(src_lines[ranges[ranges.len() - 1].end_point.row + 1..].iter());
+        new.extend(src_lines[i..].iter());
 
         new.join("\n")
     }
 
-    pub fn slice(&mut self, source_code: &str, target_point: tree_sitter::Point) -> String {
+    pub fn slice(&mut self, target_point: tree_sitter::Point) -> String {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(self.config.language).unwrap();
 
-        let tree = parser.parse(source_code, None).unwrap();
+        let tree = parser.parse(&self.src, None).unwrap();
         let root_node = tree.root_node();
+        //println!("{}", root_node.to_sexp());
 
         let target_name = self.name_at_point(&root_node, target_point).unwrap();
 
@@ -448,37 +504,33 @@ impl Slicer {
         let mut target_names: HashSet<NameRef> = HashSet::new();
         target_names.insert(target_name.clone());
 
-        target_names = self.propagate_targets(target_func, &target_names);
+        target_names = self.propagate_targets(&target_func, &target_names);
         let delete_nodes = self.flatten_unreferenced(target_func, &target_names);
         let delete_ranges = self.coalesce_ranges(&delete_nodes);
 
-        println!("delete_ranges: {:?}", delete_ranges);
+        //println!("delete_ranges: {:?}", delete_ranges);
 
         let sliced_source = self.delete_ranges(&delete_ranges);
         sliced_source
     }
 }
 
-fn main() {
-    let source_code = "#include <stdio.h>
-int main() {
-    int x = 0;
-    int y = 0;
-    s.z = x;
-    if a {
-        foo = s;
-        foo.y = bar;
-    }
-    return x;
-}";
+#[derive(Deserialize)]
+struct SliceRequest {
+    filename: String,
+    content: String,
+    point: (usize, usize),
+}
 
-    let lang = guess_language::guess(Path::new("test.c"), source_code).unwrap();
+fn main() {
+    let req: SliceRequest = serde_json::from_reader(std::io::stdin()).unwrap();
+    let lang = guess_language::guess(Path::new(&req.filename), &req.content).unwrap();
     let slicer_config = from_guessed_language(lang).unwrap();
     let mut slicer = Slicer{
         config: slicer_config,
-        src: String::from(source_code),
+        src: req.content,
     };
-    let reduced = slicer.slice(source_code, tree_sitter::Point::new(2, 8));
+    let reduced = slicer.slice(tree_sitter::Point::new(req.point.0, req.point.1));
 
     println!("{}", reduced);
 }
