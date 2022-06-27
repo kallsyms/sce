@@ -3,10 +3,21 @@ use std::collections::{HashSet, HashMap};
 use std::hash::{Hash, Hasher};
 use std::path::Path;
 use serde::Deserialize;
-use tree_sitter;
-use tree_sitter_c;
 
 mod guess_language;
+
+extern "C" {
+    fn tree_sitter_c() -> tree_sitter::Language;
+    fn tree_sitter_c_sharp() -> tree_sitter::Language;
+    fn tree_sitter_cpp() -> tree_sitter::Language;
+    fn tree_sitter_go() -> tree_sitter::Language;
+    fn tree_sitter_java() -> tree_sitter::Language;
+    fn tree_sitter_javascript() -> tree_sitter::Language;
+    fn tree_sitter_python() -> tree_sitter::Language;
+    fn tree_sitter_ruby() -> tree_sitter::Language;
+    fn tree_sitter_rust() -> tree_sitter::Language;
+    fn tree_sitter_typescript() -> tree_sitter::Language;
+}
 
 /// SlicerConfig is the main configuration for the slicer.
 /// This includes all language-specific tree-sitter type names which various stages of the slicing
@@ -67,8 +78,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
     match language {
         C => {
             Some(SlicerConfig{
-                language: tree_sitter_c::language(),
-                subtypes: expand_node_types(tree_sitter_c::NODE_TYPES),
+                language: unsafe {tree_sitter_c()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-c/src/node-types.json")),
                 identifier_types: vec!["identifier", "field_identifier"],
                 name_types: vec!["identifier", "field_expression"],
                 propagating_types: vec![
@@ -81,8 +92,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         CPlusPlus => {
             Some(SlicerConfig{
-                language: tree_sitter_cpp::language(),
-                subtypes: expand_node_types(tree_sitter_cpp::NODE_TYPES),
+                language: unsafe {tree_sitter_cpp()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-cpp/src/node-types.json")),
                 identifier_types: vec!["identifier", "field_identifier"],
                 name_types: vec!["identifier", "field_expression"],
                 propagating_types: vec![
@@ -96,8 +107,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         CSharp => {
             Some(SlicerConfig{
-                language: tree_sitter_c_sharp::language(),
-                subtypes: expand_node_types(tree_sitter_c_sharp::NODE_TYPES),
+                language: unsafe {tree_sitter_c_sharp()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-c-sharp/src/node-types.json")),
                 identifier_types: vec!["identifier"],
                 name_types: vec!["identifier", "member_access_expression"],
                 propagating_types: vec![
@@ -111,8 +122,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         Go => {
             Some(SlicerConfig{
-                language: tree_sitter_go::language(),
-                subtypes: expand_node_types(tree_sitter_go::NODE_TYPES),
+                language: unsafe {tree_sitter_go()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-go/src/node-types.json")),
                 identifier_types: vec!["identifier", "field_identifier"],
                 name_types: vec!["identifier", "selector_expression"],
                 propagating_types: vec![
@@ -126,8 +137,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         Java => {
             Some(SlicerConfig{
-                language: tree_sitter_java::language(),
-                subtypes: expand_node_types(tree_sitter_java::NODE_TYPES),
+                language: unsafe {tree_sitter_java()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-java/src/node-types.json")),
                 identifier_types: vec!["identifier"],
                 name_types: vec!["identifier", "field_access"],
                 propagating_types: vec![
@@ -141,8 +152,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         JavaScript => {
             Some(SlicerConfig{
-                language: tree_sitter_javascript::language(),
-                subtypes: expand_node_types(tree_sitter_javascript::NODE_TYPES),
+                language: unsafe {tree_sitter_javascript()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-javascript/src/node-types.json")),
                 identifier_types: vec!["identifier", "property_identifier"],
                 name_types: vec!["identifier", "member_expression"],
                 propagating_types: vec![
@@ -156,8 +167,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         Python => {
             Some(SlicerConfig{
-                language: tree_sitter_python::language(),
-                subtypes: expand_node_types(tree_sitter_python::NODE_TYPES),
+                language: unsafe {tree_sitter_python()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-python/src/node-types.json")),
                 identifier_types: vec!["identifier"],
                 name_types: vec!["identifier", "attribute"],
                 propagating_types: vec![
@@ -171,8 +182,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         Ruby => {
             Some(SlicerConfig{
-                language: tree_sitter_ruby::language(),
-                subtypes: expand_node_types(tree_sitter_ruby::NODE_TYPES),
+                language: unsafe {tree_sitter_ruby()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-ruby/src/node-types.json")),
                 identifier_types: vec!["identifier"],
                 name_types: vec!["identifier", "call"],
                 propagating_types: vec![
@@ -186,8 +197,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         Rust => {
             Some(SlicerConfig{
-                language: tree_sitter_rust::language(),
-                subtypes: expand_node_types(tree_sitter_rust::NODE_TYPES),
+                language: unsafe {tree_sitter_rust()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-rust/src/node-types.json")),
                 identifier_types: vec!["identifier"],
                 name_types: vec!["identifier", "token_tree"],
                 propagating_types: vec![
@@ -221,8 +232,8 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
         }
         TypeScript => {
             Some(SlicerConfig{
-                language: tree_sitter_typescript::language_typescript(),
-                subtypes: expand_node_types(tree_sitter_typescript::TYPESCRIPT_NODE_TYPES),
+                language: unsafe {tree_sitter_typescript()},
+                subtypes: expand_node_types(include_str!("../vendor/tree-sitter-typescript/typescript/src/node-types.json")),
                 identifier_types: vec!["identifier", "property_identifier"],
                 name_types: vec!["identifier", "member_expression"],
                 propagating_types: vec![

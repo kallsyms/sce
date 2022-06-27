@@ -15,4 +15,4 @@ MIT
 
 ## Attributions
 
-* The language detection code was lifted from [difftastic](https://github.com/Wilfred/difftastic)
+* The language detection code and build script was lifted from [difftastic](https://github.com/Wilfred/difftastic)
