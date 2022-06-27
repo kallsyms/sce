@@ -79,6 +79,161 @@ fn from_guessed_language(language: guess_language::Language) -> Option<SlicerCon
                 var_definition_scope_types: vec!["compound_statement"],
             })
         }
+        CPlusPlus => {
+            Some(SlicerConfig{
+                language: tree_sitter_cpp::language(),
+                subtypes: expand_node_types(tree_sitter_cpp::NODE_TYPES),
+                identifier_types: vec!["identifier", "field_identifier"],
+                name_types: vec!["identifier", "field_expression"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    // TODO: for in
+                ],
+                statement_types: vec!["_statement", "declaration"],
+                slice_scope_types: vec!["function_definition"],
+                var_definition_scope_types: vec!["compound_statement"],
+            })
+        }
+        CSharp => {
+            Some(SlicerConfig{
+                language: tree_sitter_c_sharp::language(),
+                subtypes: expand_node_types(tree_sitter_c_sharp::NODE_TYPES),
+                identifier_types: vec!["identifier"],
+                name_types: vec!["identifier", "member_access_expression"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    // TODO: for in
+                ],
+                statement_types: vec!["_statement"],
+                slice_scope_types: vec!["_function_body", "method_declaration"],
+                var_definition_scope_types: vec!["block"],
+            })
+        }
+        Go => {
+            Some(SlicerConfig{
+                language: tree_sitter_go::language(),
+                subtypes: expand_node_types(tree_sitter_go::NODE_TYPES),
+                identifier_types: vec!["identifier", "field_identifier"],
+                name_types: vec!["identifier", "selector_expression"],
+                propagating_types: vec![
+                    ("assignment_statement", ("left", "right")),
+                    ("short_var_declaration", ("left", "right")),
+                ],
+                statement_types: vec!["_statement"],
+                slice_scope_types: vec!["function_declaration"],
+                var_definition_scope_types: vec!["block"],
+            })
+        }
+        Java => {
+            Some(SlicerConfig{
+                language: tree_sitter_java::language(),
+                subtypes: expand_node_types(tree_sitter_java::NODE_TYPES),
+                identifier_types: vec!["identifier"],
+                name_types: vec!["identifier", "field_access"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    // TODO: for in
+                ],
+                statement_types: vec!["statement"],
+                slice_scope_types: vec!["method_declaration"],
+                var_definition_scope_types: vec!["block"],
+            })
+        }
+        JavaScript => {
+            Some(SlicerConfig{
+                language: tree_sitter_javascript::language(),
+                subtypes: expand_node_types(tree_sitter_javascript::NODE_TYPES),
+                identifier_types: vec!["identifier", "property_identifier"],
+                name_types: vec!["identifier", "member_expression"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    ("variable_declarator", ("name", "value")),
+                ],
+                statement_types: vec!["statement"],
+                slice_scope_types: vec!["function_declaration", "generator_function_declaration", "arrow_function", "method_definition"],
+                var_definition_scope_types: vec!["statement_block"],
+            })
+        }
+        Python => {
+            Some(SlicerConfig{
+                language: tree_sitter_python::language(),
+                subtypes: expand_node_types(tree_sitter_python::NODE_TYPES),
+                identifier_types: vec!["identifier"],
+                name_types: vec!["identifier", "attribute"],
+                propagating_types: vec![
+                    ("assignment", ("left", "right")),
+                    ("with_item", ("alias", "value")),
+                ],
+                statement_types: vec!["_compound_statement", "_simple_statement"],
+                slice_scope_types: vec!["function_definition"],
+                var_definition_scope_types: vec!["function_definition"],
+            })
+        }
+        Ruby => {
+            Some(SlicerConfig{
+                language: tree_sitter_ruby::language(),
+                subtypes: expand_node_types(tree_sitter_ruby::NODE_TYPES),
+                identifier_types: vec!["identifier"],
+                name_types: vec!["identifier", "call"],
+                propagating_types: vec![
+                    ("assignment", ("left", "right")),
+                ],
+                // Can't use _primary since that includes like `integer`
+                statement_types: vec!["_statement", "begin", "while", "until", "if", "unless", "for", "case"],
+                slice_scope_types: vec!["method", "singleton_method"],
+                var_definition_scope_types: vec!["method", "singleton_method"],
+            })
+        }
+        Rust => {
+            Some(SlicerConfig{
+                language: tree_sitter_rust::language(),
+                subtypes: expand_node_types(tree_sitter_rust::NODE_TYPES),
+                identifier_types: vec!["identifier"],
+                name_types: vec!["identifier", "token_tree"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    ("let_declaration", ("pattern", "value")),
+                    // TODO: for in, if let, while let if those don't already work
+                ],
+                // # treesitter (and maybe rust's spec?) doesn't have a normal "statement"
+                // so we have to do our best and enumerate what is normally used as a statement
+                statement_types: vec![
+                    "let_declaration",
+                    "macro_invocation",
+                    "assignment_expression",
+                    "await_expression",
+                    "call_expression",
+                    "compound_assignment_expr",
+                    "for_expression",
+                    "if_expression",
+                    "if_let_expression",
+                    "loop_expression",
+                    "match_expression",
+                    "return_expression",
+                    "struct_expression",
+                    "try_expression",
+                    "while_expression",
+                    "while_let_expression",
+                ],
+                slice_scope_types: vec!["function_item"],
+                var_definition_scope_types: vec!["block"],
+            })
+        }
+        TypeScript => {
+            Some(SlicerConfig{
+                language: tree_sitter_typescript::language_typescript(),
+                subtypes: expand_node_types(tree_sitter_typescript::TYPESCRIPT_NODE_TYPES),
+                identifier_types: vec!["identifier", "property_identifier"],
+                name_types: vec!["identifier", "member_expression"],
+                propagating_types: vec![
+                    ("assignment_expression", ("left", "right")),
+                    ("variable_declarator", ("name", "value")),
+                ],
+                statement_types: vec!["statement"],
+                slice_scope_types: vec!["function_declaration", "generator_function_declaration", "arrow_function", "method_definition"],
+                var_definition_scope_types: vec!["statement_block"],
+            })
+        }
         _ => None
     }
 }
