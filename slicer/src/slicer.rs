@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+use thiserror::Error;
 
 use crate::traverse::depth_first;
 use crate::slicer_config::SlicerConfig;
@@ -34,6 +35,16 @@ impl<'a> NameRef<'a> {
         let len = self.components.len().min(other.components.len());
         return self.components[..len].iter().zip(other.components[..len].iter()).all(|(a, b)| a == b);
     }
+}
+
+#[derive(Error, Debug)]
+pub enum SliceError {
+    #[error("tree-sitter version mismatch: {0}")]
+    TreeSitterVersionError(tree_sitter::LanguageError),
+    // #[error("Parse error")]
+    // ParseError,
+    #[error("No identifier at point {0}")]
+    NoNameAtPointError(tree_sitter::Point),
 }
 
 pub struct Slicer {
@@ -279,8 +290,10 @@ impl Slicer {
     //     new.join("\n")
     // }
 
-    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
+    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>, target_point: tree_sitter::Point) -> (String, tree_sitter::Point) {
         let src_lines: Vec<&str> = self.src.split("\n").collect();
+
+        let mut target_point = target_point.clone();
         let mut new: Vec<&str> = vec![];
 
         let mut i = 0;
@@ -297,25 +310,42 @@ impl Slicer {
                 new.push(suffix);
             }
             i = range.end_point.row + 1;
+
+            // the target point must be included in the final slice response (i.e. not deleted)
+            // so no need to check for any weird cases.
+            if range.end_point.row < target_point.row {
+                let mut deleted_lines = range.end_point.row - range.start_point.row;
+                if prefix.trim().is_empty() || suffix.trim().is_empty() {
+                    deleted_lines += 1;
+                }
+                target_point.row -= deleted_lines;
+            }
         }
         new.extend(src_lines[i..].iter());
 
-        new.join("\n")
+        (new.join("\n"), target_point)
     }
 
-    pub fn slice(&mut self, target_point: tree_sitter::Point) -> String {
+    pub fn slice(&mut self, target_point: tree_sitter::Point) -> Result<(String, tree_sitter::Point), SliceError> {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(self.config.language).unwrap();
+        if let Err(lang_err) = parser.set_language(self.config.language) {
+            return Err(SliceError::TreeSitterVersionError(lang_err));
+        }
 
+        // unchecked unwrap since this only fails if:
+        // 1. parser lang is unset (it is)
+        // 2. timeout expired (we don't set any)
+        // 3. cancellation flag set (we don't)
         let tree = parser.parse(&self.src, None).unwrap();
         let root_node = tree.root_node();
-        //println!("{}", root_node.to_sexp());
+        // TODO: check root_node.has_error()?
 
-        let target_name = self.name_at_point(&root_node, target_point).unwrap();
+        let target_name = self.name_at_point(&root_node, target_point).ok_or(SliceError::NoNameAtPointError(target_point))?;
 
         // walk up to the containing function
-        // TODO: maybe make this just "outermost block"?
+        // TODO: maybe make this just "outermost shared block"?
         let mut target_func = target_name.node;
+
         // Cursors don't do what you'd expect here?
         // cur = target.walk();
         // assert_eq!(cur.goto_parent(), true); fails
@@ -337,7 +367,6 @@ impl Slicer {
 
         //println!("delete_ranges: {:?}", delete_ranges);
 
-        let sliced_source = self.delete_ranges(&delete_ranges);
-        sliced_source
+        Ok(self.delete_ranges(&delete_ranges, target_point))
     }
 }

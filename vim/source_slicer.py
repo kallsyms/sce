@@ -16,8 +16,11 @@ def do_slice():
         'point': [row, col],
     }).encode('utf-8')
 
-    res = subprocess.run([os.path.join(SCRIPT_PATH, "../slicer/target/debug/slicer")], input=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.decode('utf-8')
+    res = json.loads(subprocess.run([os.path.join(SCRIPT_PATH, "../slicer/target/debug/slicer")], input=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.decode('utf-8'))
+
+    # grab the syntax for the current file
     syntax = vim.eval('&syntax')
+
     vim.command('vnew')
     # https://github.com/preservim/tagbar/blob/0243b19920a683df531f19bb7fb80c0ff83927dd/autoload/tagbar.vim#L989
     vim.command('setlocal buftype=nofile')
@@ -30,6 +33,7 @@ def do_slice():
 
     vim.command('set syntax='+syntax)
 
-    vim.current.buffer[:] = res.split('\n')
-    # TODO: get equivalent cursor position
-    #vim.current.window.cursor = (row + 1, col)
+    vim.current.buffer[:] = res['content'].split('\n')
+    row, col = res['point']
+    row += 1
+    vim.current.window.cursor = [row, col]
