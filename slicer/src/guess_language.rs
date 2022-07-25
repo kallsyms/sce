@@ -1,4 +1,5 @@
 // From difftastic: https://raw.githubusercontent.com/Wilfred/difftastic/master/src/parse/guess_language.rs
+// Copyright (c) 2021-2022 Wilfred Hughes
 
 //! Guess which programming language a file is written in.
 //!
