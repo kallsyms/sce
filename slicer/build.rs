@@ -1,3 +1,4 @@
+// adapted from https://github.com/Wilfred/difftastic/blob/master/build.rs
 use rayon::prelude::*;
 use std::path::PathBuf;
 

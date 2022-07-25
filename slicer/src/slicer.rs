@@ -343,7 +343,6 @@ impl Slicer {
         let target_name = self.name_at_point(&root_node, target_point).ok_or(SliceError::NoNameAtPointError(target_point))?;
 
         // walk up to the containing function
-        // TODO: maybe make this just "outermost shared block"?
         let mut target_func = target_name.node;
 
         // Cursors don't do what you'd expect here?
