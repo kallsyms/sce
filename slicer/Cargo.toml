@@ -17,6 +17,7 @@ rayon = "1.5.2"
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"
+datatest = "0.7.1"
 
 [lib]
 path = "src/lib.rs"

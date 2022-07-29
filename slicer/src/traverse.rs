@@ -96,6 +96,7 @@ impl<'a> DepthFirstWalk<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pretty_assertions::assert_eq;
 
     fn sample_tree() -> tree_sitter::Tree {
         let mut parser = tree_sitter::Parser::new();
