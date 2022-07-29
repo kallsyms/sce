@@ -84,6 +84,7 @@ impl Slicer {
         }
     }
 
+    /// List all names referenced by this node or any descendant.
     fn referenced_names<'a>(&self, node: tree_sitter::Node<'a>) -> Vec<NameRef<'a>> {
         let mut names = vec![];
         depth_first(node).traverse(|descendant| {

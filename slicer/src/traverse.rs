@@ -93,3 +93,163 @@ impl<'a> DepthFirstWalk<'a> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_tree() -> tree_sitter::Tree {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(unsafe {crate::slicer_config::tree_sitter_python()}).unwrap();
+        let tree = parser.parse("def foo(a, b, c): return a + b + c", None).unwrap();
+
+        tree
+    }
+
+    #[test]
+    /// Test the iterator form of depth_first
+    fn test_depth_first() {
+        let tree = sample_tree();
+
+        let mut node_kinds = vec![];
+        for node in depth_first(tree.root_node()) {
+            node_kinds.push(node.kind());
+        }
+
+        assert_eq!(node_kinds, vec![
+                   "module",
+                   "function_definition",
+                   "def",
+                   "identifier",
+                   "parameters",
+                   "(",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ")",
+                   ":",
+                   "block",
+                   "return_statement",
+                   "return",
+                   "binary_operator",
+                   "binary_operator",
+                   "identifier",
+                   "+",
+                   "identifier",
+                   "+",
+                   "identifier",
+        ]);
+    }
+
+    #[test]
+    /// Test the traverse(cb) form of depth_first, always requesting child nodes
+    fn test_traverse_all() {
+        let tree = sample_tree();
+
+        let mut node_kinds = vec![];
+        depth_first(tree.root_node()).traverse(|node| {
+            node_kinds.push(node.kind());
+
+            true
+        });
+
+        assert_eq!(node_kinds, vec![
+                   "module",
+                   "function_definition",
+                   "def",
+                   "identifier",
+                   "parameters",
+                   "(",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ")",
+                   ":",
+                   "block",
+                   "return_statement",
+                   "return",
+                   "binary_operator",
+                   "binary_operator",
+                   "identifier",
+                   "+",
+                   "identifier",
+                   "+",
+                   "identifier",
+        ]);
+    }
+
+    #[test]
+    /// Test the traverse(cb) form of depth_first, requesting child nodes except in the case of the
+    /// binary_operator
+    fn test_traverse_exit() {
+        let tree = sample_tree();
+
+        let mut node_kinds = vec![];
+        depth_first(tree.root_node()).traverse(|node| {
+            node_kinds.push(node.kind());
+
+            return node.kind() != "binary_operator";
+        });
+
+        assert_eq!(node_kinds, vec![
+                   "module",
+                   "function_definition",
+                   "def",
+                   "identifier",
+                   "parameters",
+                   "(",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ",",
+                   "identifier",
+                   ")",
+                   ":",
+                   "block",
+                   "return_statement",
+                   "return",
+                   "binary_operator",
+        ]);
+    }
+
+    #[test]
+    /// Test traverse_with_depth(cb, on_descent, on_ascent), ensuring descend and ascend get called
+    /// as appropriate.
+    fn test_traverse_with_depth() {
+        let tree = sample_tree();
+
+        let transitions = std::cell::RefCell::new(vec![]);
+
+        depth_first(tree.root_node()).traverse_with_depth(
+            |_| { true },
+            |from, to| {
+                transitions.borrow_mut().push(("DESCEND", from.kind(), to.kind()));
+            },
+            |from, to| {
+                transitions.borrow_mut().push(("ASCEND", from.kind(), to.kind()));
+            },
+        );
+
+        assert_eq!(transitions.into_inner(), vec![
+                   ("DESCEND", "module", "function_definition"),
+                   ("DESCEND", "function_definition", "def"),
+                   ("DESCEND", "parameters", "("),
+                   ("ASCEND", ")", "parameters"),
+                   // sibling to block
+                   ("DESCEND", "block", "return_statement"),
+                   ("DESCEND", "return_statement", "return"),
+                   // sibling to binary_operator
+                   ("DESCEND", "binary_operator", "binary_operator"),
+                   ("DESCEND", "binary_operator", "identifier"),
+                   ("ASCEND", "identifier", "binary_operator"),
+                   ("ASCEND", "identifier", "binary_operator"),
+                   ("ASCEND", "binary_operator", "return_statement"),
+                   ("ASCEND", "return_statement", "block"),
+                   ("ASCEND", "block", "function_definition"),
+                   ("ASCEND", "function_definition", "module"),
+        ]);
+    }
+}

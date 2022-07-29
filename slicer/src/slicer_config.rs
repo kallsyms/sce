@@ -4,16 +4,16 @@ use serde::Deserialize;
 use crate::guess_language;
 
 extern "C" {
-    fn tree_sitter_c() -> tree_sitter::Language;
-    fn tree_sitter_c_sharp() -> tree_sitter::Language;
-    fn tree_sitter_cpp() -> tree_sitter::Language;
-    fn tree_sitter_go() -> tree_sitter::Language;
-    fn tree_sitter_java() -> tree_sitter::Language;
-    fn tree_sitter_javascript() -> tree_sitter::Language;
-    fn tree_sitter_python() -> tree_sitter::Language;
-    fn tree_sitter_ruby() -> tree_sitter::Language;
-    fn tree_sitter_rust() -> tree_sitter::Language;
-    fn tree_sitter_typescript() -> tree_sitter::Language;
+    pub fn tree_sitter_c() -> tree_sitter::Language;
+    pub fn tree_sitter_cpp() -> tree_sitter::Language;
+    pub fn tree_sitter_c_sharp() -> tree_sitter::Language;
+    pub fn tree_sitter_go() -> tree_sitter::Language;
+    pub fn tree_sitter_java() -> tree_sitter::Language;
+    pub fn tree_sitter_javascript() -> tree_sitter::Language;
+    pub fn tree_sitter_python() -> tree_sitter::Language;
+    pub fn tree_sitter_ruby() -> tree_sitter::Language;
+    pub fn tree_sitter_rust() -> tree_sitter::Language;
+    pub fn tree_sitter_typescript() -> tree_sitter::Language;
 }
 
 /// SlicerConfig is the main configuration for the slicer.

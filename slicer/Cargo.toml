@@ -14,3 +14,9 @@ thiserror = "1.0.31"
 [build-dependencies]
 cc = "1.0.73"
 rayon = "1.5.2"
+
+[dev-dependencies]
+pretty_assertions = "1.2.1"
+
+[lib]
+path = "src/lib.rs"

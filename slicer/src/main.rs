@@ -1,14 +1,9 @@
 use std::path::Path;
 use serde::{Deserialize, Serialize};
 
-mod guess_language;
-mod slicer_config;
-mod slicer;
-mod traverse;
-
-use guess_language::guess as guess_language;
-use slicer_config::from_guessed_language;
-use slicer::Slicer;
+use slicer::guess_language::guess as guess_language;
+use slicer::slicer_config::from_guessed_language;
+use slicer::slicer::Slicer;
 
 #[derive(Deserialize)]
 struct SliceRequest {
