@@ -7,7 +7,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use slicer::guess_language::guess as guess_language;
-use slicer::slicer::Slicer;
+use slicer::slicer::{Slicer, SliceDirection};
 use slicer::slicer_config::from_guessed_language;
 
 #[derive(Deserialize)]
@@ -20,12 +20,16 @@ struct SliceTest {
     /// The name of the variable, just as a check to ensure point is correct and make the test more
     /// obvious.
     var: String,
+    /// The direction of the slice, Backward or Forward
+    direction: SliceDirection,
 }
 
 #[datatest::files("tests/files/", {
   path in r"slice.*",
 })]
 fn test_slice(path: &Path) {
+    let _ = env_logger::try_init();
+
     let output_contents = fs::read_to_string(&path).unwrap();
 
     let test_line = output_contents.lines().next().unwrap().split("TEST:").last().unwrap();
@@ -45,7 +49,9 @@ fn test_slice(path: &Path) {
         config: slicer_config,
         src: input_contents,
     };
-    let (sliced, _) = slicer.slice(tree_sitter::Point::new(test.point.0 - 1, test.point.1)).unwrap();
+    let (sliced, _) = slicer.slice(tree_sitter::Point::new(test.point.0 - 1, test.point.1), test.direction).unwrap();
 
-    assert_eq!(sliced.trim(), output_contents.lines().skip(1).collect::<Vec<&str>>().join("\n"));
+    // this is "backwards" because pretty_assertions diffs from a to b, and it's more intuitive if
+    // we show what the slicer output is missing.
+    assert_eq!(output_contents.lines().skip(1).collect::<Vec<&str>>().join("\n"), sliced.trim());
 }

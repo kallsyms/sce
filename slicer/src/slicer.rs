@@ -1,3 +1,4 @@
+use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
@@ -35,6 +36,12 @@ impl<'a> NameRef<'a> {
         let len = self.components.len().min(other.components.len());
         return self.components[..len].iter().zip(other.components[..len].iter()).all(|(a, b)| a == b);
     }
+}
+
+#[derive(Deserialize)]
+pub enum SliceDirection {
+    Backward,
+    Forward,
 }
 
 #[derive(Error, Debug)]
@@ -97,38 +104,52 @@ impl Slicer {
         names
     }
 
-    /// Propagate the set of target names out through all assignments
-    fn propagate_targets<'a>(&self, outer_scope: &'a tree_sitter::Node, initial_target_names: &HashSet<NameRef<'a>>) -> HashSet<NameRef<'a>> {
+    /// Propagate the set of target names out through all assignments until we hit a fixed point.
+    fn propagate_targets<'a>(&self, outer_scope: &'a tree_sitter::Node, initial_target_names: &HashSet<NameRef<'a>>, direction: SliceDirection) -> HashSet<NameRef<'a>> {
         let mut target_names = initial_target_names.clone();
 
         // TODO: use depth_first.traverse_with_depth to push and pop scopes based on
         // var_definition_scope_types
         loop {
-            let mut changed = false;
+            let len_before = target_names.len();
 
             for descendant in depth_first(*outer_scope) {
-                if let Some((_, (target_child_name, source_child_name))) = self.config.propagating_types.iter().find(|&&(expr_kind, (_, _))| expr_kind == descendant.kind()) {
-                    let target_node = descendant.child_by_field_name(target_child_name);
-                    let source_node = descendant.child_by_field_name(source_child_name);
+                if let Some((_, (defs_child_name, refs_child_name))) = self.config.propagating_types.iter().find(|&&(expr_kind, (_, _))| expr_kind == descendant.kind()) {
+                    let defs_node = descendant.child_by_field_name(defs_child_name);
+                    let refs_node = descendant.child_by_field_name(refs_child_name);
 
-                    // Guard against things like python's `with` which may or may not have a target
-                    if target_node.is_none() || source_node.is_none() {
+                    // Guard against things like python's `with` which may or may not define
+                    // variable(s)
+                    if defs_node.is_none() || refs_node.is_none() {
                         continue;
                     }
 
-                    let node_target_names = self.referenced_names(target_node.unwrap());
-                    let node_source_names = self.referenced_names(source_node.unwrap());
+                    let node_defs_names = self.referenced_names(defs_node.unwrap());
+                    let node_refs_names = self.referenced_names(refs_node.unwrap());
+                    log::debug!("defs {:?} refs {:?}", node_defs_names, node_refs_names);
 
-                    // If any known targets "affects" a var in the source, all vars in the dest are now targets
-                    if target_names.iter().any(|tname| node_source_names.iter().any(|sname| tname.affects(&sname))) {
-                        //println!("Propagating node {:?} adds {:?} to targets", descendant, node_target_names);
-                        changed = target_names.intersection(&HashSet::from_iter(node_target_names.iter().cloned())).count() > 0;
-                        target_names.extend(node_target_names);
+                    match direction {
+                        SliceDirection::Backward => {
+                            // if any known target is used in a defs, all refss in the
+                            // assign should now be targets
+                            if target_names.iter().any(|tname| node_defs_names.iter().any(|dname| tname.affects(&dname))) {
+                                log::info!("Propagating node {:?} adds {:?} to targets", descendant, node_refs_names);
+                                target_names.extend(node_refs_names.clone());
+                            }
+                        },
+                        SliceDirection::Forward => {
+                            // opposite: if any known target is used in a refs, all defss
+                            // should be targets.
+                            if target_names.iter().any(|tname| node_refs_names.iter().any(|sname| tname.affects(&sname))) {
+                                log::info!("Propagating node {:?} adds {:?} to targets", descendant, node_defs_names);
+                                target_names.extend(node_defs_names.clone());
+                            }
+                        },
                     }
                 }
             }
             
-            if !changed {
+            if target_names.len() == len_before {
                 break;
             }
         }
@@ -151,7 +172,7 @@ impl Slicer {
             |descendant| {
                 if self.config.name_types.contains(&descendant.kind()) {
                     let name = NameRef{node: descendant, components: self.name_components(&descendant)};
-                    if target_names.contains(&name) {
+                    if target_names.iter().any(|tname| tname.affects(&name)) {
                         references.borrow_mut().insert(descendant);
                     }
                     return false;
@@ -327,7 +348,7 @@ impl Slicer {
         (new.join("\n"), target_point)
     }
 
-    pub fn slice(&mut self, target_point: tree_sitter::Point) -> Result<(String, tree_sitter::Point), SliceError> {
+    pub fn slice(&mut self, target_point: tree_sitter::Point, direction: SliceDirection) -> Result<(String, tree_sitter::Point), SliceError> {
         let mut parser = tree_sitter::Parser::new();
         if let Err(lang_err) = parser.set_language(self.config.language) {
             return Err(SliceError::TreeSitterVersionError(lang_err));
@@ -339,9 +360,11 @@ impl Slicer {
         // 3. cancellation flag set (we don't)
         let tree = parser.parse(&self.src, None).unwrap();
         let root_node = tree.root_node();
+        log::debug!("sexp: {}", root_node.to_sexp());
         // TODO: check root_node.has_error()?
 
         let target_name = self.name_at_point(&root_node, target_point).ok_or(SliceError::NoNameAtPointError(target_point))?;
+        log::debug!("targeting {:?}", target_name);
 
         // walk up to the containing function
         let mut target_func = target_name.node;
@@ -361,11 +384,10 @@ impl Slicer {
         let mut target_names: HashSet<NameRef> = HashSet::new();
         target_names.insert(target_name.clone());
 
-        target_names = self.propagate_targets(&target_func, &target_names);
+        target_names = self.propagate_targets(&target_func, &target_names, direction);
+        log::info!("Final set of target names: {:?}", target_names);
         let delete_nodes = self.flatten_unreferenced(target_func, &target_names);
         let delete_ranges = self.coalesce_ranges(&delete_nodes);
-
-        //println!("delete_ranges: {:?}", delete_ranges);
 
         Ok(self.delete_ranges(&delete_ranges, target_point))
     }

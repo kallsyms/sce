@@ -5,7 +5,7 @@ import vim
 
 SCRIPT_PATH = os.path.dirname(os.path.realpath(__file__))
 
-def do_slice():
+def do_slice(direction):
     row, col = vim.current.window.cursor
     # row is 1-indexed, we expect 0-indexed
     row -= 1
@@ -14,6 +14,7 @@ def do_slice():
         'filename': vim.current.buffer.name,
         'content': '\n'.join(vim.current.buffer),
         'point': [row, col],
+        'direction': direction,
     }).encode('utf-8')
 
     res = json.loads(subprocess.run([os.path.join(SCRIPT_PATH, "../slicer/target/debug/slicer")], input=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.decode('utf-8'))

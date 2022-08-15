@@ -1,0 +1,1 @@
+{"filename": "example1.c", "content": "#include <stdbool.h>\n\ntypedef struct thing {\n    int x;\n    int bar;\n} thing;\n\nint main() {\n    int x = 0;\n    int y = 0;\n    int z = x;\n    if (true) {\n        struct thing foo = (struct thing){\n            .x = x,\n        };\n        foo.bar = 0;\n    }\n\n    return z;\n}\n", "point": [12, 22], "direction": "Forward"}

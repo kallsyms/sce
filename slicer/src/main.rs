@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 
 use slicer::guess_language::guess as guess_language;
 use slicer::slicer_config::from_guessed_language;
-use slicer::slicer::Slicer;
+use slicer::slicer::{Slicer, SliceDirection};
 
 #[derive(Deserialize)]
 struct SliceRequest {
     filename: String,
     content: String,
     point: (usize, usize),
+    direction: SliceDirection,
 }
 
 #[derive(Serialize)]
@@ -19,6 +20,8 @@ struct SliceResponse {
 }
 
 fn main() {
+    env_logger::init();
+
     let req: SliceRequest = serde_json::from_reader(std::io::stdin()).unwrap();
 
     let lang = guess_language(Path::new(&req.filename), &req.content).unwrap();
@@ -28,7 +31,7 @@ fn main() {
         config: slicer_config,
         src: req.content,
     };
-    let (reduced, new_point) = slicer.slice(tree_sitter::Point::new(req.point.0, req.point.1)).unwrap();
+    let (reduced, new_point) = slicer.slice(tree_sitter::Point::new(req.point.0, req.point.1), req.direction).unwrap();
 
     serde_json::to_writer(std::io::stdout(), &SliceResponse{
         content: reduced,

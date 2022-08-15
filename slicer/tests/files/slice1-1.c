@@ -1,4 +1,4 @@
-// TEST:{"source": "example1.c", "point": [9, 9], "var": "x"}
+// TEST:{"source": "example1.c", "point": [9, 9], "var": "x", "direction": "Forward"}
 #include <stdbool.h>
 
 typedef struct thing {

@@ -32,7 +32,7 @@ pub struct SlicerConfig {
     /// Type names representing any possible "complete" name (e.g. `self.foo.bar`)
     pub name_types: Vec<&'static str>,
 
-    /// Type names and the type names for the descendant target and source representing ways a
+    /// Type names and the type names for the descendant destination and source representing ways a
     /// variable can flow into a new variable (e.g. assignment).
     /// e.g. ("assignment_expression", ("left", "right"))
     pub propagating_types: Vec<(&'static str, (&'static str, &'static str))>,
@@ -81,6 +81,7 @@ pub fn from_guessed_language(language: guess_language::Language) -> Option<Slice
                 name_types: vec!["identifier", "field_expression"],
                 propagating_types: vec![
                     ("assignment_expression", ("left", "right")),
+                    ("init_declarator", ("declarator", "value")),
                 ],
                 statement_types: vec!["_statement", "declaration"],
                 slice_scope_types: vec!["function_definition"],
@@ -95,6 +96,7 @@ pub fn from_guessed_language(language: guess_language::Language) -> Option<Slice
                 name_types: vec!["identifier", "field_expression"],
                 propagating_types: vec![
                     ("assignment_expression", ("left", "right")),
+                    ("init_declarator", ("declarator", "value")),
                     // TODO: for in
                 ],
                 statement_types: vec!["_statement", "declaration"],
