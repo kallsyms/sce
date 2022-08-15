@@ -10,14 +10,19 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:source-slicer.slice"
+    "onCommand:source-slicer.sliceBackward",
+    "onCommand:source-slicer.sliceForward"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "source-slicer.slice",
-        "title": "Slice"
+        "command": "source-slicer.sliceBackward",
+        "title": "Slice Backward"
+      },
+      {
+        "command": "source-slicer.sliceForward",
+        "title": "Slice Forward"
       }
     ]
   },
