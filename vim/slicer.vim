@@ -19,9 +19,16 @@ sys.path.insert(0, plugin_root_dir)
 import source_slicer
 EOF
 
-function! s:slice(direction)
-    python3 source_slicer.do_slice(vim.eval("a:direction"))
+function! s:slice_window(direction)
+    python3 source_slicer.do_slice_window(vim.eval("a:direction"))
 endfunction
 
-command! -nargs=0 SliceBackward call s:slice('Backward')
-command! -nargs=0 SliceForward call s:slice('Forward')
+function! s:slice_fold(direction)
+    python3 source_slicer.do_slice_fold(vim.eval("a:direction"))
+endfunction
+
+command! -nargs=0 SliceBackwardW call s:slice_window('Backward')
+command! -nargs=0 SliceForwardW call s:slice_window('Forward')
+
+command! -nargs=0 SliceBackwardF call s:slice_fold('Backward')
+command! -nargs=0 SliceForwardF call s:slice_fold('Forward')

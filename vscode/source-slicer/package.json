@@ -1,7 +1,7 @@
 {
   "name": "source-slicer",
   "displayName": "Source Slicer",
-  "description": "",
+  "description": "Slice through source code",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.69.0"
@@ -10,19 +10,29 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:source-slicer.sliceBackward",
-    "onCommand:source-slicer.sliceForward"
+    "onCommand:source-slicer.sliceBackwardW",
+    "onCommand:source-slicer.sliceForwardW",
+    "onCommand:source-slicer.sliceBackwardF",
+    "onCommand:source-slicer.sliceForwardF"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "source-slicer.sliceBackward",
-        "title": "Slice Backward"
+        "command": "source-slicer.sliceBackwardW",
+        "title": "Slice Backward (New Window)"
       },
       {
-        "command": "source-slicer.sliceForward",
-        "title": "Slice Forward"
+        "command": "source-slicer.sliceForwardW",
+        "title": "Slice Forward (New Window)"
+      },
+      {
+        "command": "source-slicer.sliceBackwardF",
+        "title": "Slice Backward (Fold)"
+      },
+      {
+        "command": "source-slicer.sliceForwardF",
+        "title": "Slice Forward (Fold)"
       }
     ]
   },

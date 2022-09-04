@@ -67,6 +67,11 @@ The main slicing code is written in Rust and uses [tree-sitter](https://tree-sit
 Various IDE plugins (vscode, vim, etc.) can shell out to the Rust binary to easily get slice results.
 
 
+## Development
+
+* Developing/Loading the VSCode extension requires the open workspace to be the directory the extension is in, i.e. `${GIT_ROOT}/vscode/source-slicer/`.
+
+
 ## License
 
 MIT
