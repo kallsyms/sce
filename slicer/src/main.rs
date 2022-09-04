@@ -5,18 +5,41 @@ use slicer::guess_language::guess as guess_language;
 use slicer::slicer_config::from_guessed_language;
 use slicer::slicer::{Slicer, SliceDirection};
 
+#[derive(Serialize, Deserialize)]
+struct SerializablePoint((usize, usize));
+impl From<tree_sitter::Point> for SerializablePoint {
+    fn from(point: tree_sitter::Point) -> Self {
+        SerializablePoint((point.row, point.column))
+    }
+}
+impl Into<tree_sitter::Point> for SerializablePoint {
+    fn into(self) -> tree_sitter::Point {
+        tree_sitter::Point {
+            row: self.0.0,
+            column: self.0.1,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct SerializableRange((SerializablePoint, SerializablePoint));
+impl From<tree_sitter::Range> for SerializableRange {
+    fn from(range: tree_sitter::Range) -> Self {
+        SerializableRange((SerializablePoint::from(range.start_point), SerializablePoint::from(range.end_point)))
+    }
+}
+
 #[derive(Deserialize)]
 struct SliceRequest {
     filename: String,
     content: String,
-    point: (usize, usize),
+    point: SerializablePoint,
     direction: SliceDirection,
 }
 
 #[derive(Serialize)]
 struct SliceResponse {
-    content: String,
-    point: (usize, usize),
+    ranges_to_remove: Vec<SerializableRange>,
 }
 
 fn main() {
@@ -31,10 +54,9 @@ fn main() {
         config: slicer_config,
         src: req.content,
     };
-    let (reduced, new_point) = slicer.slice(tree_sitter::Point::new(req.point.0, req.point.1), req.direction).unwrap();
+    let ranges_to_remove = slicer.slice(req.point.into(), req.direction).unwrap();
 
     serde_json::to_writer(std::io::stdout(), &SliceResponse{
-        content: reduced,
-        point: (new_point.row, new_point.column),
+        ranges_to_remove: ranges_to_remove.into_iter().map(|r| SerializableRange::from(r)).collect(),
     }).unwrap();
 }

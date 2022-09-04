@@ -7,7 +7,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use slicer::guess_language::guess as guess_language;
-use slicer::slicer::{Slicer, SliceDirection};
+use slicer::slicer::{Slicer, SliceDirection, delete_ranges};
 use slicer::slicer_config::from_guessed_language;
 
 #[derive(Deserialize)]
@@ -49,7 +49,9 @@ fn test_slice(path: &Path) {
         config: slicer_config,
         src: input_contents,
     };
-    let (sliced, _) = slicer.slice(tree_sitter::Point::new(test.point.0 - 1, test.point.1), test.direction).unwrap();
+    let point = tree_sitter::Point::new(test.point.0 - 1, test.point.1);
+    let to_remove = slicer.slice(point, test.direction).unwrap();
+    let (sliced, _) = delete_ranges(&slicer.src, &to_remove, point);
 
     // this is "backwards" because pretty_assertions diffs from a to b, and it's more intuitive if
     // we show what the slicer output is missing.

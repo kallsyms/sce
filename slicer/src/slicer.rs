@@ -312,43 +312,7 @@ impl Slicer {
     //     new.join("\n")
     // }
 
-    fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>, target_point: tree_sitter::Point) -> (String, tree_sitter::Point) {
-        let src_lines: Vec<&str> = self.src.split("\n").collect();
-
-        let mut target_point = target_point.clone();
-        let mut new: Vec<&str> = vec![];
-
-        let mut i = 0;
-        for range in ranges {
-            if i < range.start_point.row {
-                new.extend(src_lines[i..range.start_point.row].iter());
-            }
-            let prefix = &src_lines[range.start_point.row][0..range.start_point.column];
-            if !prefix.trim().is_empty() {
-                new.push(prefix);
-            }
-            let suffix = &src_lines[range.end_point.row][range.end_point.column..];
-            if !suffix.trim().is_empty() {
-                new.push(suffix);
-            }
-            i = range.end_point.row + 1;
-
-            // the target point must be included in the final slice response (i.e. not deleted)
-            // so no need to check for any weird cases.
-            if range.end_point.row < target_point.row {
-                let mut deleted_lines = range.end_point.row - range.start_point.row;
-                if prefix.trim().is_empty() || suffix.trim().is_empty() {
-                    deleted_lines += 1;
-                }
-                target_point.row -= deleted_lines;
-            }
-        }
-        new.extend(src_lines[i..].iter());
-
-        (new.join("\n"), target_point)
-    }
-
-    pub fn slice(&mut self, target_point: tree_sitter::Point, direction: SliceDirection) -> Result<(String, tree_sitter::Point), SliceError> {
+    pub fn slice(&mut self, target_point: tree_sitter::Point, direction: SliceDirection) -> Result<Vec<tree_sitter::Range>, SliceError> {
         let mut parser = tree_sitter::Parser::new();
         if let Err(lang_err) = parser.set_language(self.config.language) {
             return Err(SliceError::TreeSitterVersionError(lang_err));
@@ -389,6 +353,44 @@ impl Slicer {
         let delete_nodes = self.flatten_unreferenced(target_func, &target_names);
         let delete_ranges = self.coalesce_ranges(&delete_nodes);
 
-        Ok(self.delete_ranges(&delete_ranges, target_point))
+        Ok(delete_ranges)
     }
+}
+
+/// Delete the given ranges from the src, returning both the source with lines removed as well as
+/// the target_point adjusted to be pointing to the same location.
+pub fn delete_ranges(src: &str, ranges: &Vec<tree_sitter::Range>, target_point: tree_sitter::Point) -> (String, tree_sitter::Point) {
+    let src_lines: Vec<&str> = src.split("\n").collect();
+
+    let mut target_point = target_point.clone();
+    let mut new: Vec<&str> = vec![];
+
+    let mut i = 0;
+    for range in ranges {
+        if i < range.start_point.row {
+            new.extend(src_lines[i..range.start_point.row].iter());
+        }
+        let prefix = &src_lines[range.start_point.row][0..range.start_point.column];
+        if !prefix.trim().is_empty() {
+            new.push(prefix);
+        }
+        let suffix = &src_lines[range.end_point.row][range.end_point.column..];
+        if !suffix.trim().is_empty() {
+            new.push(suffix);
+        }
+        i = range.end_point.row + 1;
+
+        // the target point must be included in the final slice response (i.e. not deleted)
+        // so no need to check for any weird cases.
+        if range.end_point.row < target_point.row {
+            let mut deleted_lines = range.end_point.row - range.start_point.row;
+            if prefix.trim().is_empty() || suffix.trim().is_empty() {
+                deleted_lines += 1;
+            }
+            target_point.row -= deleted_lines;
+        }
+    }
+    new.extend(src_lines[i..].iter());
+
+    (new.join("\n"), target_point)
 }
