@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 use std::hash::{Hash, Hasher};
 use thiserror::Error;
 
@@ -38,6 +38,21 @@ impl<'a> NameRef<'a> {
     }
 }
 
+struct InlineTempVar {
+    name: String,
+    value: String,
+    typ: String,
+}
+
+impl InlineTempVar {
+    fn format(&self, fmt: &str) -> String {
+        fmt.clone()
+        .replace("{name}", &self.name)
+        .replace("{value}", &self.value)
+        .replace("{type}", &self.typ)
+    }
+}
+
 #[derive(Deserialize)]
 pub enum SliceDirection {
     Backward,
@@ -52,11 +67,20 @@ pub enum SliceError {
     // ParseError,
     #[error("No identifier at point {0}")]
     NoNameAtPointError(tree_sitter::Point),
+    #[error("No call at point {0}")]
+    NoCallAtPointError(tree_sitter::Point),
 }
 
 pub struct Slicer {
     pub config: SlicerConfig,
     pub src: String,
+}
+
+#[derive(Debug)]
+enum RewriteValue<'a> {
+    None,
+    String(String),
+    Node(tree_sitter::Node<'a>),
 }
 
 impl Slicer {
@@ -68,27 +92,32 @@ impl Slicer {
     fn name_components(&self, node: &tree_sitter::Node) -> Vec<String> {
         depth_first(*node)
             .filter(|&descendant| self.config.identifier_types.contains(&descendant.kind()))
-            .map(|descendant| String::from(&self.src[descendant.start_byte()..descendant.end_byte()]))
+            .map(|descendant| String::from(&self.src[descendant.byte_range()]))
             .into_iter().collect()
     }
 
-    /// Find the name reference at the specified point, if an identifier is referenced at that
-    /// point.
-    fn name_at_point<'a>(&self, root: &'a tree_sitter::Node, point: tree_sitter::Point) -> Option<NameRef<'a>> {
+    fn node_of_kind_for_point<'a>(&self, root: &'a tree_sitter::Node, kinds: &Vec<&'static str>, point: tree_sitter::Point) -> Option<tree_sitter::Node<'a>> {
         let mut cur = root.walk();
 
         loop {
             let node = cur.node();
 
-            if self.config.name_types.contains(&node.kind()) {
-                // Walk down and gather all specific identifiers
-                return Some(NameRef{node, components: self.name_components(&node)});
+            if kinds.contains(&node.kind()) {
+                return Some(node);
             }
 
+            // Either we progress down to a child node which contains the point, or we bail out.
             if cur.goto_first_child_for_point(point) == None {
                 return None;
             }
         }
+    }
+
+    /// Find the name reference at the specified point, if an identifier is referenced at that
+    /// point.
+    fn name_at_point<'a>(&self, root: &'a tree_sitter::Node, point: tree_sitter::Point) -> Option<NameRef<'a>> {
+        let node = self.node_of_kind_for_point(root, &self.config.name_types, point)?;
+        Some(NameRef{node, components: self.name_components(&node)})
     }
 
     /// List all names referenced by this node or any descendant.
@@ -355,10 +384,220 @@ impl Slicer {
 
         Ok(delete_ranges)
     }
+
+    fn get_capture<'a>(&self, query: &tree_sitter::Query, capture_name: &str, node: tree_sitter::Node<'a>, content: &[u8]) -> Vec<tree_sitter::Node<'a>> {
+        let capture_idx = query.capture_index_for_name(capture_name).unwrap();
+        let mut cursor = tree_sitter::QueryCursor::new();
+
+        cursor
+        .captures(query, node, content)
+        .map(|(m, _)| m.captures.iter().filter(|c| c.index == capture_idx).map(|c| c.node)).into_iter().flatten().collect()
+    }
+
+    fn get_captures<'a, const COUNT: usize>(&self, query: &tree_sitter::Query, capture_names: [&str; COUNT], node: tree_sitter::Node<'a>, content: &[u8]) -> Vec<[tree_sitter::Node<'a>; COUNT]> {
+        let capture_idxs: Vec<u32> = capture_names.iter().map(|name| query.capture_index_for_name(name).unwrap()).collect();
+        let mut cursor = tree_sitter::QueryCursor::new();
+
+        cursor
+        .matches(query, node, content)
+        .map(|m| {
+            let capture_map: HashMap<u32, tree_sitter::Node> = m.captures.iter().map(|c| (c.index, c.node)).collect();
+            capture_idxs.iter().map(|idx| capture_map[idx]).collect::<Vec<tree_sitter::Node>>().try_into().unwrap()
+        }).collect()
+    }
+
+    fn rewrite_names(&self, node: &tree_sitter::Node, rename_map: &HashMap<NameRef, String>, src: &str) -> String {
+        let mut rewritten_src: String = String::new();
+
+        let mut prev_byte = node.start_byte();
+        depth_first(*node).traverse(|n| {
+            if self.config.name_types.contains(&n.kind()) {
+                let name = NameRef{node: n, components: self.name_components(&n)};
+                if let Some(new_name) = rename_map.get(&name) {
+                    rewritten_src += &src[prev_byte..n.start_byte()];
+                    rewritten_src += new_name;
+                    prev_byte = n.end_byte();
+                }
+
+                return false;
+            }
+
+            return true;
+        });
+        rewritten_src += &src[prev_byte..node.end_byte()];
+
+        rewritten_src
+    }
+
+    pub fn inline(&mut self, point: tree_sitter::Point, target_content: &str, target_point: tree_sitter::Point) -> Result<String, SliceError> {
+        let mut parser = tree_sitter::Parser::new();
+        if let Err(lang_err) = parser.set_language(self.config.language) {
+            return Err(SliceError::TreeSitterVersionError(lang_err));
+        }
+
+        // The tree of the file in which the call is made
+        let tree = parser.parse(&self.src, None).unwrap();
+        let root_node = tree.root_node();
+
+        // The tree of the file in which the target function is defined
+        let function_definition_file_tree = parser.parse(target_content, None).unwrap();
+        let function_definition_file_root_node = function_definition_file_tree.root_node();
+
+        let callsite = self.node_of_kind_for_point(&root_node, &self.config.function_call_types, point).ok_or(SliceError::NoCallAtPointError(point))?;
+        log::debug!("callsite: {}", callsite.to_sexp());
+        // The node in the function_definition_tree representing the target function's definition
+        let function_definition = self.node_of_kind_for_point(&function_definition_file_root_node, &self.config.slice_scope_types, target_point).ok_or(SliceError::NoNameAtPointError(target_point))?;
+        log::debug!("function_definition: {}", function_definition.to_sexp());
+
+        // Create rename map of function parameter name to name/expression passed at callsite
+        let call_args = self.get_capture(&self.config.call_args_query, "value", callsite, self.src.as_bytes());
+        log::debug!("call_args: {:?}", call_args);
+
+        let function_params = self.get_captures(&self.config.function_query, ["param_name", "param_type"], function_definition, target_content.as_bytes());
+        log::debug!("function_params: {:?}", function_params);
+
+        let function = self.get_captures(&self.config.function_query, ["function_type", "function_body"], function_definition, target_content.as_bytes());
+        let [function_type, function_body] = function[0];
+        let returns = self.get_captures(&self.config.returns_query, ["return_statement", "return_value"], function_definition, target_content.as_bytes());
+        
+        // TODO: check len of call_args and function_params are equal
+        // TODO: this/self implicit first arg
+
+        // First stage, basic variable substitution
+
+        // Passed args which are more than a simple constant or name are put into temporary variables
+        // e.g. inlining `foo(x=bar(baz))` would result in `let x = bar(baz); {contents of foo}`
+        // to avoid giving the impression that `bar(baz)` is evaluated twice
+        let mut temps: Vec<InlineTempVar> = vec![];
+        
+        let mut rename_map: HashMap<NameRef, String> = HashMap::new();
+
+        for (arg, [param_name_node, param_type_node]) in call_args.iter().zip(function_params.iter()) {
+            let param_name = self.name_at_point(&function_definition_file_root_node, param_name_node.start_position()).ok_or(SliceError::NoNameAtPointError(param_name_node.start_position()))?;
+
+            if self.config.constant_types.contains(&arg.kind()) || self.config.name_types.contains(&arg.kind()) {
+                rename_map.insert(param_name, self.src[arg.byte_range()].to_string());
+            } else {
+                let inline_name = format!("inline_{}", &target_content[param_name.node.byte_range()]);
+                temps.push(InlineTempVar{
+                    name: inline_name.clone(),
+                    value: self.src[arg.byte_range()].to_string(),
+                    // TODO: check if type is set before trying to pull content
+                    // wont be applicable in e.g. python
+                    typ: target_content[param_type_node.byte_range()].to_string(),
+                });
+                rename_map.insert(param_name, inline_name);
+            }
+        }
+        log::debug!("rename_map: {:?}", rename_map);
+
+        // Second stage, inlining
+        // Replace returns in the function body
+        // Replace the call site with the return expression
+
+        // The value that a node should be rewritten to, if applicable
+        let mut rewrite_map: HashMap<tree_sitter::Node, RewriteValue> = HashMap::new();
+
+        // TODO: ensure that the return value is the last statement in the function body
+        // could have an early return in a conditional in a void function for example
+        // For single returns, just inline the return value.
+        // For multiple returns, hoist the statement the call site is in to where the return is
+        // and have a comment below saying "continue on line #x".
+        let callsite_rewrite = match &returns[..] {
+            [ret] => {
+                let [return_stmt, retval] = ret;
+                rewrite_map.insert(return_stmt.clone(), RewriteValue::None);
+                // TODO: run retval through renamemap
+                RewriteValue::Node(retval.clone())
+            },
+            _ => {
+                RewriteValue::None
+            }
+        };
+
+        let src_lines: Vec<&str> = self.src.split("\n").collect();
+        let callsite_whitespace: String = src_lines[callsite.start_position().row].chars().take_while(|c| c.is_whitespace()).collect();
+
+        let mut new_src = src_lines[0..callsite.start_position().row].join("\n") + "\n";
+
+        for temp in temps {
+            new_src += &callsite_whitespace;
+            new_src += &temp.format(self.config.temp_var_format);
+            new_src += "\n";
+        }
+
+        let mut start_byte = 0;
+        let mut end_byte = 0;
+
+        // Find the first byte of the first statement in the function body
+        let mut cur = function_body.walk();
+        for child in function_body.children(&mut cur) {
+            if child.is_named() {
+                if start_byte == 0 {
+                    start_byte = child.start_byte();
+                }
+                end_byte = child.end_byte();
+            }
+        }
+
+        let definition_whitespace: String = target_content[..end_byte].chars().rev().take_while(|c| c.is_whitespace()).collect();
+
+        let mut prev_byte = start_byte;
+
+        // Do the actual rewriting into a new inline_src string, just to make indentation fixups easier
+        let mut inline_src: String = String::new();
+        depth_first(function_body.clone()).traverse(|n| {
+            if let Some(rewrite) = rewrite_map.get(&n) {
+                inline_src += &target_content[prev_byte..n.start_byte()];
+                match rewrite {
+                    RewriteValue::String(s) => inline_src += s,
+                    // TODO: do nameref rewriting for n
+                    RewriteValue::Node(n) => inline_src += &self.rewrite_names(n, &rename_map, &target_content),
+                    RewriteValue::None => (),
+                }
+                prev_byte = n.end_byte();
+
+                return false;
+            } else if self.config.name_types.contains(&n.kind()) {
+                // TODO: use self.rewrite_names
+                let name = NameRef{node: n, components: self.name_components(&n)};
+                if let Some(new_name) = rename_map.get(&name) {
+                    inline_src += &target_content[prev_byte..n.start_byte()];
+                    inline_src += new_name;
+                    prev_byte = n.end_byte();
+                }
+
+                return false;
+            }
+            
+            return true;
+        });
+        inline_src += &target_content[prev_byte..end_byte];
+
+        for line in inline_src.split("\n") {
+            new_src += &callsite_whitespace;
+            new_src += &(line.strip_prefix(&definition_whitespace).unwrap_or(&line));
+            new_src += "\n";
+        }
+
+        new_src = new_src[..new_src.len()-1].to_string();
+
+        new_src += &src_lines[callsite.start_position().row][0..callsite.start_position().column];
+        match callsite_rewrite {
+            RewriteValue::String(s) => new_src += &s,
+            RewriteValue::Node(n) => new_src += &self.rewrite_names(&n, &rename_map, &target_content),
+            RewriteValue::None => (),
+        }
+
+        new_src += &self.src[callsite.end_byte()..];
+
+        Ok(new_src)
+    }
 }
 
 /// Delete the given ranges from the src, returning both the source with lines removed as well as
 /// the target_point adjusted to be pointing to the same location.
+/// Ranges is assumed to be pre-sorted.
 pub fn delete_ranges(src: &str, ranges: &Vec<tree_sitter::Range>, target_point: tree_sitter::Point) -> (String, tree_sitter::Point) {
     let src_lines: Vec<&str> = src.split("\n").collect();
 

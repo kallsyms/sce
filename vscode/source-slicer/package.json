@@ -13,7 +13,8 @@
     "onCommand:source-slicer.sliceBackwardW",
     "onCommand:source-slicer.sliceForwardW",
     "onCommand:source-slicer.sliceBackwardF",
-    "onCommand:source-slicer.sliceForwardF"
+    "onCommand:source-slicer.sliceForwardF",
+    "onCommand:source-slicer.inline"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -33,6 +34,10 @@
       {
         "command": "source-slicer.sliceForwardF",
         "title": "Slice Forward (Fold)"
+      },
+      {
+        "command": "source-slicer.inline",
+        "title": "Inline Call"
       }
     ]
   },

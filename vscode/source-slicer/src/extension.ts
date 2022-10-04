@@ -6,10 +6,23 @@ const SLICER_BIN = __dirname + "/../../../slicer/target/debug/slicer";
 type SliceDirection = "Backward" | "Forward";
 
 type SlicerRequest = {
+    direction: SliceDirection;
+};
+
+type InlineRequest = {
+    target_content: string;
+    target_point: [number, number];
+};
+
+type Request = {
     filename: string;
+    language: string;
     content: string;
     point: [number, number];
-    direction: SliceDirection;
+
+    kind: string;
+    slice?: SlicerRequest;
+    inline?: InlineRequest;
 };
 
 type SourcePoint = [number, number];
@@ -19,7 +32,11 @@ type SlicerResponse = {
     ranges_to_remove: SourceRange[];
 };
 
-function runSlicer(request: SlicerRequest): Promise<SlicerResponse> {
+type InlineResponse = {
+    content: string;
+};
+
+function runSlicer(request: Request): Promise<SlicerResponse|InlineResponse> {
     return new Promise((resolve, reject) => {
         const proc = child_process.spawn(SLICER_BIN);
         proc.on('error', (err) => {
@@ -91,16 +108,20 @@ async function slice(direction: SliceDirection, displayFunc: DisplayHandler) {
     const language = editor.document.languageId;
     const point = editor.selection.active;
 
-    const req: SlicerRequest = {
+    const req: Request = {
         filename,
+        language,
         content,
         point: [point.line, point.character],
-        direction: direction,
+        kind: "slice",
+        slice: {
+            direction: direction,
+        }
     };
 
     let resp: SlicerResponse;
     try {
-        resp = await runSlicer(req);
+        resp = await runSlicer(req) as SlicerResponse;
     } catch (e) {
         await vscode.window.showErrorMessage("Error slicing: " + (e as Error).toString());
         return;
@@ -116,7 +137,7 @@ async function newDocDisplay(content: string, point: vscode.Position, language: 
         language: language,
         content: filtered,
     });
-    // open the document as a preview
+
     await vscode.window.showTextDocument(sliceDoc, {
         preview: true,
         selection: new vscode.Range(targetPoint[0], targetPoint[1], targetPoint[0], targetPoint[1]),
@@ -139,6 +160,63 @@ async function foldDisplay(content: string, point: vscode.Position, language: st
     await vscode.commands.executeCommand('editor.createFoldingRangeFromSelection');
 }
 
+async function inline() {
+    const editor = vscode.window.activeTextEditor;
+    if (!editor) {
+        return;
+    }
+
+    const filename = editor.document.fileName;
+    const content = editor.document.getText();
+    const language = editor.document.languageId;
+    const point = editor.selection.active;
+
+    const targets = await vscode.commands.executeCommand<vscode.Location[]>('vscode.executeDefinitionProvider', editor.document.uri, point);
+    if (targets.length === 0) {
+        await vscode.window.showErrorMessage("Error inlining: No target definition(s) found");
+        return;
+    }
+
+    // TODO: prompt user to select target
+    const target = targets[0];
+
+    const req: Request = {
+        filename,
+        language,
+        content,
+        point: [point.line, point.character],
+        kind: "inline",
+        inline: {
+            target_content: (await vscode.workspace.openTextDocument(target.uri)).getText(),
+            target_point: [target.range.start.line, target.range.start.character],
+        }
+    };
+    console.log(JSON.stringify(req));
+
+    let resp: InlineResponse;
+    try {
+        resp = await runSlicer(req) as InlineResponse;
+    } catch (e) {
+        console.log(e);
+        await vscode.window.showErrorMessage("Error inlining: " + (e as Error).toString());
+        return;
+    }
+
+    console.log(resp);
+
+    let contentLines = content.split('\n');
+    const inlineDoc = await vscode.workspace.openTextDocument({
+        language: language,
+        content: contentLines.slice(0, point.line).concat(resp.content).concat(contentLines.slice(point.line + 1)).join('\n'),
+    });
+
+    await vscode.window.showTextDocument(inlineDoc, {
+        preview: true,
+        selection: new vscode.Range(point.line, point.character, point.line, point.character),
+        viewColumn: vscode.ViewColumn.Beside,
+    });
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(vscode.commands.registerCommand('source-slicer.sliceBackwardW', async () => {
         await slice("Backward", newDocDisplay);
@@ -151,6 +229,10 @@ export function activate(context: vscode.ExtensionContext) {
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('source-slicer.sliceForwardF', async () => {
         await slice("Forward", foldDisplay);
+	}));
+
+	context.subscriptions.push(vscode.commands.registerCommand('source-slicer.inline', async () => {
+        await inline();
 	}));
 }
 
