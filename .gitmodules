@@ -1,30 +1,30 @@
-[submodule "slicer/vendor/tree-sitter-c"]
+[submodule "sce/vendor/tree-sitter-c"]
 	path = sce/vendor/tree-sitter-c
 	url = https://github.com/tree-sitter/tree-sitter-c
-[submodule "slicer/vendor/tree-sitter-cpp"]
+[submodule "sce/vendor/tree-sitter-cpp"]
 	path = sce/vendor/tree-sitter-cpp
 	url = https://github.com/tree-sitter/tree-sitter-cpp
-[submodule "slicer/vendor/tree-sitter-go"]
+[submodule "sce/vendor/tree-sitter-go"]
 	path = sce/vendor/tree-sitter-go
 	url = https://github.com/tree-sitter/tree-sitter-go
-[submodule "slicer/vendor/tree-sitter-java"]
+[submodule "sce/vendor/tree-sitter-java"]
 	path = sce/vendor/tree-sitter-java
 	url = https://github.com/tree-sitter/tree-sitter-java
-[submodule "slicer/vendor/tree-sitter-javascript"]
+[submodule "sce/vendor/tree-sitter-javascript"]
 	path = sce/vendor/tree-sitter-javascript
 	url = https://github.com/tree-sitter/tree-sitter-javascript
-[submodule "slicer/vendor/tree-sitter-python"]
+[submodule "sce/vendor/tree-sitter-python"]
 	path = sce/vendor/tree-sitter-python
 	url = https://github.com/tree-sitter/tree-sitter-python
-[submodule "slicer/vendor/tree-sitter-c-sharp"]
+[submodule "sce/vendor/tree-sitter-c-sharp"]
 	path = sce/vendor/tree-sitter-c-sharp
 	url = https://github.com/tree-sitter/tree-sitter-c-sharp
-[submodule "slicer/vendor/tree-sitter-rust"]
+[submodule "sce/vendor/tree-sitter-rust"]
 	path = sce/vendor/tree-sitter-rust
 	url = https://github.com/tree-sitter/tree-sitter-rust
-[submodule "slicer/vendor/tree-sitter-typescript"]
+[submodule "sce/vendor/tree-sitter-typescript"]
 	path = sce/vendor/tree-sitter-typescript
 	url = https://github.com/tree-sitter/tree-sitter-typescript
-[submodule "slicer/vendor/tree-sitter-ruby"]
+[submodule "sce/vendor/tree-sitter-ruby"]
 	path = sce/vendor/tree-sitter-ruby
 	url = https://github.com/tree-sitter/tree-sitter-ruby
