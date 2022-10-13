@@ -15,7 +15,7 @@
 
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::{borrow::Borrow, ffi::OsStr, path::Path};
+use std::{borrow::Borrow, ffi::OsStr, path::Path, str::FromStr};
 
 /// Languages supported by difftastic. Each language here has a
 /// corresponding tree-sitter parser.
@@ -59,6 +59,57 @@ pub enum Language {
     TypeScript,
     Yaml,
     Zig,
+}
+
+impl FromStr for Language {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "bash" => Ok(Language::Bash),
+            "c" => Ok(Language::C),
+            "clojure" => Ok(Language::Clojure),
+            "common-lisp" => Ok(Language::CommonLisp),
+            "cpp" => Ok(Language::CPlusPlus),
+            "c++" => Ok(Language::CPlusPlus),
+            "csharp" => Ok(Language::CSharp),
+            "c-sharp" => Ok(Language::CSharp),
+            "c#" => Ok(Language::CSharp),
+            "css" => Ok(Language::Css),
+            "dart" => Ok(Language::Dart),
+            "elixir" => Ok(Language::Elixir),
+            "elm" => Ok(Language::Elm),
+            "elvish" => Ok(Language::Elvish),
+            "emacs-lisp" => Ok(Language::EmacsLisp),
+            "gleam" => Ok(Language::Gleam),
+            "go" => Ok(Language::Go),
+            "haskell" => Ok(Language::Haskell),
+            "hcl" => Ok(Language::Hcl),
+            "janet" => Ok(Language::Janet),
+            "java" => Ok(Language::Java),
+            "javascript" => Ok(Language::JavaScript),
+            "json" => Ok(Language::Json),
+            "jsx" => Ok(Language::Jsx),
+            "kotlin" => Ok(Language::Kotlin),
+            "lua" => Ok(Language::Lua),
+            "nix" => Ok(Language::Nix),
+            "ocaml" => Ok(Language::OCaml),
+            "ocaml-interface" => Ok(Language::OCamlInterface),
+            "php" => Ok(Language::Php),
+            "perl" => Ok(Language::Perl),
+            "python" => Ok(Language::Python),
+            "ruby" => Ok(Language::Ruby),
+            "rust" => Ok(Language::Rust),
+            "scala" => Ok(Language::Scala),
+            "swift" => Ok(Language::Swift),
+            "toml" => Ok(Language::Toml),
+            "tsx" => Ok(Language::Tsx),
+            "typescript" => Ok(Language::TypeScript),
+            "yaml" => Ok(Language::Yaml),
+            "zig" => Ok(Language::Zig),
+            _ => Err(()),
+        }
+    }
 }
 
 use Language::*;

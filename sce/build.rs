@@ -121,4 +121,6 @@ fn main() {
     }
 
     parsers.par_iter().for_each(|p| p.build());
+
+    tonic_build::compile_protos("../sce.proto").unwrap();
 }

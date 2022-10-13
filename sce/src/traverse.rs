@@ -100,7 +100,7 @@ mod tests {
 
     fn sample_tree() -> tree_sitter::Tree {
         let mut parser = tree_sitter::Parser::new();
-        parser.set_language(unsafe {crate::slicer_config::tree_sitter_python()}).unwrap();
+        parser.set_language(unsafe {crate::engine_config::tree_sitter_python()}).unwrap();
         let tree = parser.parse("def foo(a, b, c): return a + b + c", None).unwrap();
 
         tree
