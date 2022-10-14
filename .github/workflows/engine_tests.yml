@@ -7,17 +7,17 @@ jobs:
     name: SCE Engine Tests
     runs-on: ubuntu-latest
     steps:
+      - name: Install rust nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-1.64.0  # Required for datatest
+          override: true
       - name: Install protobuf
         run: sudo apt-get install -y protobuf-compiler
       - name: Checkout
         uses: actions/checkout@v2
         with:
           submodules: recursive
-      - name: Install rust nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.64.0-nightly  # Required for datatest
-          override: true
       - name: Cache
         uses: actions/cache@v3
         with:
