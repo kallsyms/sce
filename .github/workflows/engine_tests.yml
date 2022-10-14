@@ -16,7 +16,7 @@ jobs:
       - name: Install rust nightly
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly  # Required for datatest
+          toolchain: 1.64.0-nightly  # Required for datatest
           override: true
       - name: Cache
         uses: actions/cache@v3
