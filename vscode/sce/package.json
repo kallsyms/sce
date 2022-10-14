@@ -1,0 +1,73 @@
+{
+  "name": "sce",
+  "displayName": "SCE",
+  "description": "Source Code Explorer",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.69.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:sce.sliceBackwardW",
+    "onCommand:sce.sliceForwardW",
+    "onCommand:sce.sliceBackwardF",
+    "onCommand:sce.sliceForwardF",
+    "onCommand:sce.inline"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "sce.sliceBackwardW",
+        "title": "Slice Backward (New Window)"
+      },
+      {
+        "command": "sce.sliceForwardW",
+        "title": "Slice Forward (New Window)"
+      },
+      {
+        "command": "sce.sliceBackwardF",
+        "title": "Slice Backward (Fold)"
+      },
+      {
+        "command": "sce.sliceForwardF",
+        "title": "Slice Forward (Fold)"
+      },
+      {
+        "command": "sce.inline",
+        "title": "Inline function call"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn run compile",
+    "genprotos": "yarn run grpc_tools_node_protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts-plugin --ts_proto_out=./src/proto --grpc_out=./src/proto --ts_out=./src/proto --proto_path=../../ sce.proto",
+    "build:proto": "proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=src/proto/ ../../sce.proto",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "yarn run compile && yarn run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^7.2.0",
+    "@types/mocha": "^9.1.1",
+    "@types/node": "16.x",
+    "@types/vscode": "^1.69.0",
+    "@typescript-eslint/eslint-plugin": "^5.31.0",
+    "@typescript-eslint/parser": "^5.31.0",
+    "@vscode/test-electron": "^2.1.5",
+    "eslint": "^8.20.0",
+    "glob": "^8.0.3",
+    "mocha": "^10.0.0",
+    "typescript": "^4.7.4"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.7.1",
+    "@grpc/proto-loader": "^0.7.3",
+    "grpc-tools": "^1.11.3",
+    "ts-proto": "^1.128.0"
+  }
+}
