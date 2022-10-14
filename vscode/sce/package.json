@@ -44,7 +44,6 @@
   "scripts": {
     "vscode:prepublish": "yarn run compile",
     "build:protos": "yarn run protoc --ts_out=src/proto --proto_path=../../ sce.proto",
-    "precompile": "yarn run build:protos",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint",

@@ -3,7 +3,7 @@ import * as child_process from 'child_process';
 import { ChannelCredentials } from '@grpc/grpc-js';
 import { GrpcTransport } from "@protobuf-ts/grpc-transport";
 
-import { Point, Range, SliceDirection, Source, SliceRequest, SliceResponse } from './proto/sce';
+import { Point, Range, SliceDirection, Source, SliceRequest, SliceResponse, InlineRequest, InlineResponse} from './proto/sce';
 import { SCEClient }  from './proto/sce.client';
 
 const ENGINE_BIN = __dirname + "/../../../sce/target/debug/sce";
@@ -116,6 +116,49 @@ async function inline() {
     if (!editor) {
         return;
     }
+
+    const defs = await vscode.commands.executeCommand<vscode.Location[]>("vscode.executeDefinitionProvider", editor.document.uri, editor.selection.active);
+    // TODO: warn on no def
+    // TODO: select menu when > 1 def
+    if (!defs) {
+        return;
+    }
+
+    const filename = editor.document.fileName;
+    const content = editor.document.getText();
+    const language = editor.document.languageId;
+    const point = editor.selection.active;
+
+    let req: InlineRequest = {
+        source: {
+            filename,
+            content,
+            language,
+            point: {
+                line: point.line,
+                col: point.character,
+            },
+        },
+        targetContent: content,
+        targetPoint: {
+            line: defs[0].range.start.line,
+            col: defs[0].range.start.character,
+        },
+    };
+
+    const call = client.inline(req); 
+    let resp: InlineResponse = await call.response;
+
+    const sliceDoc = await vscode.workspace.openTextDocument({
+        language: language,
+        content: resp.content,
+    });
+
+    await vscode.window.showTextDocument(sliceDoc, {
+        preview: true,
+        selection: new vscode.Range(point.line, point.character, point.line, point.character),
+        viewColumn: vscode.ViewColumn.Beside,
+    });
 }
 
 export function activate(context: vscode.ExtensionContext) {
