@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package sce;
+
+message Point {
+    uint32 line = 1;
+    uint32 col = 2;
+}
+
+message Range {
+    Point start = 1;
+    Point end = 2;
+}
+
+enum SliceDirection {
+    BACKWARD = 0;
+    FORWARD = 1;
+}
+
+message Source {
+    /// The filename of the file to operate on. Mainly used for guessing the language.
+    string filename = 1;
+    /// The content (source) of the file to operate on.
+    string content = 2;
+    /// The language of the file, if known.
+    optional string language = 3;
+    /// The point of the cursor in the file.
+    Point point = 4;
+}
+
+message SliceRequest {
+    Source source = 1;
+    SliceDirection direction = 2;
+}
+
+message SliceResponse {
+    /// The list of ranges which should be removed/hidden to show the slice.
+    repeated Range to_remove = 1;
+}
+
+message InlineRequest {
+    Source source = 1;
+    /// The content (source) of the file which holds the definition of the target function
+    string target_content = 2;
+    /// The point of the target function definition
+    Point target_point = 3;
+}
+
+message InlineResponse {
+    /// The full content of the file with the target function definition inlined.
+    string content = 1;
+}
+
+service SCE {
+    rpc Slice(SliceRequest) returns (SliceResponse);
+
+    /// Request to inline the given target function at the given call site.
+    /// N.B. Some LSPs support inlining already (see https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#:~:text=constant%0A%09%20*%20%2D%20...%0A%09%20*/%0A%09export%20const-,RefactorInline,-%3A%20CodeActionKind%20%3D)
+    /// however many don't (notably clangd/any C(++) LSP I can find),
+    /// so this still provides one (albeit a "simpler" AST-based approach).
+    rpc Inline(InlineRequest) returns (InlineResponse);
+}
