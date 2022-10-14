@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install protobuf
-        run: apt-get install -y protobuf-compiler
+        run: sudo apt-get install -y protobuf-compiler
       - name: Checkout
         uses: actions/checkout@v2
         with:
