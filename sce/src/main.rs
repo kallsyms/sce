@@ -32,9 +32,9 @@ fn to_rpc(range: tree_sitter::Range) -> sce::rpc::Range {
 pub struct SCEService {}
 impl SCEService {
     fn make_engine(source: &Source) -> Engine {
-        let lang = match &source.language {
-            Some(lang) => Language::from_str(&lang).unwrap(),
-            _ => guess_language(Path::new(&source.filename), &source.content).unwrap(),
+        let lang = match source.language.as_str() {
+            "" => guess_language(Path::new(&source.filename), &source.content).unwrap(),
+            _ => Language::from_str(&source.language).unwrap(),
         };
         let config = from_guessed_language(lang).unwrap();
 
