@@ -1,15 +1,18 @@
 import * as vscode from 'vscode';
 import * as child_process from 'child_process';
-import { Point } from './proto/sce/Point';
-import { Range } from './proto/sce/Range';
-import { SliceDirection } from './proto/sce/SliceDirection';
-import { Source } from './proto/sce/Source';
-import { SliceRequest } from './proto/sce/SliceRequest';
-import { SliceResponse } from './proto/sce/SliceResponse';
+import { ChannelCredentials } from '@grpc/grpc-js';
+import { GrpcTransport } from "@protobuf-ts/grpc-transport";
+
+import { Point, Range, SliceDirection, Source, SliceRequest, SliceResponse } from './proto/sce';
+import { SCEClient }  from './proto/sce.client';
 
 const ENGINE_BIN = __dirname + "/../../../sce/target/debug/sce";
 let engine: child_process.ChildProcess;
-let client: SCE;
+let client: SCEClient;
+const transport = new GrpcTransport({
+    host: "localhost:1486",
+    channelCredentials: ChannelCredentials.createInsecure(),
+});
 
 function removeRanges(src: String, ranges: Range[], srcPoint: vscode.Position): [string, Point] {
     const lines = src.split('\n');
@@ -73,7 +76,8 @@ async function slice(direction: SliceDirection, displayFunc: DisplayHandler) {
         direction,
     };
 
-    let resp: SliceResponse = await client.slice(req);
+    const call = client.slice(req); 
+    let resp: SliceResponse = await call.response;
     await displayFunc(content, point, language, resp);
 }
 
@@ -117,6 +121,7 @@ async function inline() {
 export function activate(context: vscode.ExtensionContext) {
     engine = child_process.spawn(ENGINE_BIN);
     engine.on('error', (err) => {
+        console.log(err);
         vscode.window.showErrorMessage("Error starting SCE: " + (err as Error).toString());
     }).on('exit', (code) => {
         if (code !== 0) {
@@ -127,7 +132,7 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage(`SCE exited with code ${code}`);
         }
     });
-    client = new SCEClient('localhost:1486', credentials.createInsecure());
+    client = new SCEClient(transport);
 
 	context.subscriptions.push(vscode.commands.registerCommand('sce.sliceBackwardW', async () => {
         await slice(SliceDirection.BACKWARD, newDocDisplay);

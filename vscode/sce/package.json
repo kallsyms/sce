@@ -43,8 +43,8 @@
   },
   "scripts": {
     "vscode:prepublish": "yarn run compile",
-    "genprotos": "yarn run grpc_tools_node_protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts-plugin --ts_proto_out=./src/proto --grpc_out=./src/proto --ts_out=./src/proto --proto_path=../../ sce.proto",
-    "build:proto": "proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=src/proto/ ../../sce.proto",
+    "build:protos": "yarn run protoc --ts_out=src/proto --proto_path=../../ sce.proto",
+    "precompile": "yarn run build:protos",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "yarn run compile && yarn run lint",
@@ -66,8 +66,7 @@
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.7.1",
-    "@grpc/proto-loader": "^0.7.3",
-    "grpc-tools": "^1.11.3",
-    "ts-proto": "^1.128.0"
+    "@protobuf-ts/grpc-transport": "^2.8.1",
+    "@protobuf-ts/plugin": "^2.8.1"
   }
 }
