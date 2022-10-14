@@ -457,7 +457,7 @@ impl Engine {
         // TODO: check len of call_args and function_params are equal
         // TODO: this/self implicit first arg
 
-        // First stage, basic variable substitution
+        // First stage: basic variable substitution
 
         // Passed args which are more than a simple constant or name are put into temporary variables
         // e.g. inlining `foo(x=bar(baz))` would result in `let x = bar(baz); {contents of foo}`
@@ -485,7 +485,7 @@ impl Engine {
         }
         log::debug!("rename_map: {:?}", rename_map);
 
-        // Second stage, inlining
+        // Second stage: inlining
         // Replace returns in the function body
         // Replace the call site with the return expression
 
@@ -509,21 +509,10 @@ impl Engine {
             }
         };
 
-        let src_lines: Vec<&str> = self.src.split("\n").collect();
-        let callsite_whitespace: String = src_lines[callsite.start_position().row].chars().take_while(|c| c.is_whitespace()).collect();
-
-        let mut new_src = src_lines[0..callsite.start_position().row].join("\n") + "\n";
-
-        for temp in temps {
-            new_src += &callsite_whitespace;
-            new_src += &temp.format(self.config.temp_var_format);
-            new_src += "\n";
-        }
-
         let mut start_byte = 0;
         let mut end_byte = 0;
 
-        // Find the first byte of the first statement in the function body
+        // Find the first and last byte of the statements within the target function body
         let mut cur = function_body.walk();
         for child in function_body.children(&mut cur) {
             if child.is_named() {
@@ -534,14 +523,13 @@ impl Engine {
             }
         }
 
-        let definition_whitespace: String = target_content[..end_byte].chars().rev().take_while(|c| c.is_whitespace()).collect();
-
         let mut prev_byte = start_byte;
 
         // Do the actual rewriting into a new inline_src string, just to make indentation fixups easier
         let mut inline_src: String = String::new();
         depth_first(function_body.clone()).traverse(|n| {
             if let Some(rewrite) = rewrite_map.get(&n) {
+                // Node to rewrite?
                 inline_src += &target_content[prev_byte..n.start_byte()];
                 match rewrite {
                     RewriteValue::String(s) => inline_src += s,
@@ -553,6 +541,7 @@ impl Engine {
 
                 return false;
             } else if self.config.name_types.contains(&n.kind()) {
+                // Potentially a name to rewrite?
                 // TODO: use self.rewrite_names
                 let name = NameRef{node: n, components: self.name_components(&n)};
                 if let Some(new_name) = rename_map.get(&name) {
@@ -567,22 +556,51 @@ impl Engine {
             return true;
         });
         inline_src += &target_content[prev_byte..end_byte];
+        
+        // Trim off trailing whitespace which may be residual from a rewritten return statement
+        inline_src = inline_src.trim().to_string();
+        log::debug!("inline_src: '{}'", inline_src);
 
-        for line in inline_src.split("\n") {
+        // The whitespace/indentation level for the target function
+        let definition_whitespace: String = target_content[..start_byte].chars().rev().take_while(|&c| c == ' ' || c == '\t').collect();
+        log::debug!("definition_whitespace: '{}'", definition_whitespace);
+        
+        let src_lines: Vec<&str> = self.src.split("\n").collect();
+
+        // The whitespace/indentation level for the call site
+        let callsite_whitespace: String = src_lines[callsite.start_position().row].chars().take_while(|c| c.is_whitespace()).collect();
+        log::debug!("callsite_whitespace: '{}'", callsite_whitespace);
+
+        // Take the source file up to the callsite
+        let mut new_src = src_lines[0..callsite.start_position().row].join("\n") + "\n";
+
+        // Add the necessary temporary variables
+        for temp in temps {
             new_src += &callsite_whitespace;
-            new_src += &(line.strip_prefix(&definition_whitespace).unwrap_or(&line));
+            new_src += &temp.format(self.config.temp_var_format);
             new_src += "\n";
         }
 
-        new_src = new_src[..new_src.len()-1].to_string();
+        // Add the inlined function body if applicable
+        if !inline_src.is_empty() {
+            for line in inline_src.split("\n") {
+                new_src += &callsite_whitespace;
+                new_src += &(line.strip_prefix(&definition_whitespace).unwrap_or(&line));
+                new_src += "\n";
+            }
+        }
 
+        // Add anything on the line before the callsite (e.g. the lhs of an assignment)
         new_src += &src_lines[callsite.start_position().row][0..callsite.start_position().column];
+
+        // Add the callsite rewrite
         match callsite_rewrite {
             RewriteValue::String(s) => new_src += &s,
             RewriteValue::Node(n) => new_src += &self.rewrite_names(&n, &rename_map, &target_content),
             RewriteValue::None => (),
         }
 
+        // And finally add the rest of the source file
         new_src += &self.src[callsite.end_byte()..];
 
         Ok(new_src)

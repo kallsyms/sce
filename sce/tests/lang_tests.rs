@@ -6,13 +6,13 @@ use std::fs;
 use std::path::Path;
 use serde::Deserialize;
 
-use slicer::guess_language::guess as guess_language;
-use slicer::engine::{Engine, delete_ranges};
-use slicer::engine_config::from_guessed_language;
+use sce::guess_language::guess as guess_language;
+use sce::engine::{Engine, delete_ranges};
+use sce::engine_config::from_guessed_language;
 
 #[derive(Deserialize)]
 // https://serde.rs/remote-derive.html
-#[serde(remote = "slicer::rpc::SliceDirection")]
+#[serde(remote = "sce::rpc::SliceDirection")]
 pub enum SliceDirectionDef {
     Backward = 0,
     Forward = 1,
@@ -30,7 +30,7 @@ struct SliceTest {
     var: String,
     /// The direction of the slice, Backward or Forward
     #[serde(with = "SliceDirectionDef")]
-    direction: slicer::rpc::SliceDirection,
+    direction: sce::rpc::SliceDirection,
 }
 
 #[datatest::files("tests/files/", {
