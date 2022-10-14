@@ -1,9 +1,21 @@
-# Source Slicer
+# Source Code Explorer
 
-[Slice](https://en.wikipedia.org/wiki/Program_slicing) your source code to make it easier to understand.
-It's like [Tantō](https://github.com/Vector35/tanto), but for source code.
+A toolkit to explore source code.
+
+## Slicing
+
+[Slice](https://en.wikipedia.org/wiki/Program_slicing) your source code to understand how data flows within a function.
 
 [![asciicast](https://asciinema.org/a/QeYyQ9LGwrMwlxftQEJ6uVZWG.svg)](https://asciinema.org/a/QeYyQ9LGwrMwlxftQEJ6uVZWG)
+
+> It's like [Tantō](https://github.com/Vector35/tanto), but for source code.
+
+## Inlining
+
+Inline function calls to make interprocedural data flow easier to understand.
+
+
+# The Details
 
 ## Slicing Rules
 
