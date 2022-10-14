@@ -10,7 +10,7 @@ jobs:
       - name: Install rust nightly
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-1.64.0  # Required for datatest
+          toolchain: nightly-2022-07-28  # Required for datatest
           override: true
       - name: Install protobuf
         run: sudo apt-get install -y protobuf-compiler
