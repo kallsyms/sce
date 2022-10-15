@@ -129,7 +129,7 @@ def inline():
             content=content,
             point=point,
         ),
-        target_content=content,
+        target_content=open(defs[0]['uri'][len('file://'):], 'r').read(),
         target_point=proto.Point(
             line=int(defs[0]['range']['start']['line']),
             col=int(defs[0]['range']['start']['character']),
@@ -144,3 +144,4 @@ def inline():
     vim.command('setlocal nobuflisted')
     vim.command('set syntax='+syntax)
     vim.current.buffer[:] = res.content.split('\n')
+    vim.current.window.cursor = [point.line + 1, point.col]
