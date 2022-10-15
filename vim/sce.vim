@@ -27,8 +27,14 @@ function! s:slice_fold(direction)
     python3 sce.do_slice_fold(vim.eval("a:direction"))
 endfunction
 
+function! s:inline()
+    python3 sce.inline()
+endfunction
+
 command! -nargs=0 SliceBackwardW call s:slice_window('Backward')
 command! -nargs=0 SliceForwardW call s:slice_window('Forward')
 
 command! -nargs=0 SliceBackwardF call s:slice_fold('Backward')
 command! -nargs=0 SliceForwardF call s:slice_fold('Forward')
+
+command! -nargs=0 Inline call s:inline()
