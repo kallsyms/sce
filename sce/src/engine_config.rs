@@ -76,6 +76,10 @@ pub struct EngineConfig {
     /// The format string used to generate temporary variables.
     /// e.g. `{type} {name} = {value};`
     pub temp_var_format: &'static str,
+
+    /// The format string used to generate a comment.
+    /// e.g. `// {comment}`
+    pub comment_format: &'static str,
 }
 
 #[derive(Deserialize)]
@@ -143,6 +147,7 @@ pub fn from_guessed_language(language: guess_language::Language) -> Option<Engin
                         (_expression) @return_value
                     ) @return_statement").unwrap(),
                 temp_var_format: "{type} {name} = {value};",
+                comment_format: "// {comment}",
             })
         }
         // CPlusPlus => {

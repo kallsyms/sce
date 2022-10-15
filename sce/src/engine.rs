@@ -73,7 +73,7 @@ pub struct Engine {
 #[derive(Debug)]
 enum RewriteValue<'a> {
     None,
-    String(String),
+    GotoComment,
     Node(tree_sitter::Node<'a>),
 }
 
@@ -316,25 +316,6 @@ impl Engine {
         ranges
     }
 
-    // fn delete_ranges(&self, ranges: &Vec<tree_sitter::Range>) -> String {
-    //     // this assumes that there's only one statement per line, so it's safe to completely remove
-    //     // any lines which have a range to delete within it.
-    //     if ranges.len() == 0 {
-    //         return self.src.clone();
-    //     }
-
-    //     let src_lines: Vec<&str> = self.src.split("\n").collect();
-    //     let mut new: Vec<&str> = vec![];
-
-    //     new.extend(src_lines[0..ranges[0].start_point.row].iter());
-    //     for (a, b) in ranges.iter().zip(ranges[1..].iter()) {
-    //         new.extend(src_lines[a.end_point.row + 1..b.start_point.row].iter());
-    //     }
-    //     new.extend(src_lines[ranges[ranges.len() - 1].end_point.row + 1..].iter());
-
-    //     new.join("\n")
-    // }
-
     pub fn slice(&mut self, target_point: tree_sitter::Point, direction: SliceDirection) -> Result<Vec<tree_sitter::Range>, SliceError> {
         let mut parser = tree_sitter::Parser::new();
         if let Err(lang_err) = parser.set_language(self.config.language) {
@@ -498,6 +479,10 @@ impl Engine {
         // For multiple returns, hoist the statement the call site is in to where the return is
         // and have a comment below saying "continue on line #x".
         let callsite_rewrite = match &returns[..] {
+            [] => {
+                // No returns, nothing to rewrite the callsite to
+                RewriteValue::None
+            },
             [ret] => {
                 let [return_stmt, retval] = ret;
                 rewrite_map.insert(return_stmt.clone(), RewriteValue::None);
@@ -505,7 +490,17 @@ impl Engine {
                 RewriteValue::Node(retval.clone())
             },
             _ => {
-                RewriteValue::None
+                // Hoist the last return, make the others into comments saying "goto line x"
+                // TODO: the return needs to be replaced with the callsite stmt if it's an assign
+                // or similar, followed by the comment.
+                for [return_stmt, _] in &returns[..returns.len()-1] {
+                    rewrite_map.insert(return_stmt.clone(), RewriteValue::GotoComment);
+                }
+
+                let [return_stmt, retval] = returns[returns.len()-1];
+                rewrite_map.insert(return_stmt.clone(), RewriteValue::None);
+                // TODO: run retval through renamemap
+                RewriteValue::Node(retval.clone())
             }
         };
 
@@ -523,6 +518,9 @@ impl Engine {
             }
         }
 
+        // offsets within inline_src where comments should be generated indicating a jump to the
+        // end of the inline.
+        let mut comments = vec![];
         let mut prev_byte = start_byte;
 
         // Do the actual rewriting into a new inline_src string, just to make indentation fixups easier
@@ -532,7 +530,7 @@ impl Engine {
                 // Node to rewrite?
                 inline_src += &target_content[prev_byte..n.start_byte()];
                 match rewrite {
-                    RewriteValue::String(s) => inline_src += s,
+                    RewriteValue::GotoComment => comments.push(inline_src.len()),
                     // TODO: do nameref rewriting for n
                     RewriteValue::Node(n) => inline_src += &self.rewrite_names(n, &rename_map, &target_content),
                     RewriteValue::None => (),
@@ -581,6 +579,16 @@ impl Engine {
             new_src += "\n";
         }
 
+        // Add comments to the inline_src now that we know what the final line numbers will be.
+        // Lines of new_src + lines of inline_src + 1 to account for line numbers being 1-indexed.
+        let line_count = new_src.matches("\n").count() + inline_src.matches("\n").count() + 1;
+        let mut offset = 0;
+        for comment_offset in comments {
+            let comment = self.config.comment_format.clone().replace("{comment}", &format!("goto line {}", line_count + 1));
+            inline_src = inline_src[..comment_offset+offset].to_string() + &comment + &inline_src[comment_offset+offset..].to_string();
+            offset += comment.len();
+        }
+
         // Add the inlined function body if applicable
         if !inline_src.is_empty() {
             for line in inline_src.split("\n") {
@@ -595,9 +603,11 @@ impl Engine {
 
         // Add the callsite rewrite
         match callsite_rewrite {
-            RewriteValue::String(s) => new_src += &s,
             RewriteValue::Node(n) => new_src += &self.rewrite_names(&n, &rename_map, &target_content),
             RewriteValue::None => (),
+            _ => {
+                panic!("Unhandled rewrite value at callsite");
+            }
         }
 
         // And finally add the rest of the source file
